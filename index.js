@@ -6,7 +6,7 @@ const app = express();
 app.get('/', (req, res) => {
     res.send('Your Discord Bot is fully operational!');
 });
-app.listen(3000, () => {
+app.listen(process.env.PORT || 3000, () => {
     console.log('Web server loaded successfully.');
 });
 
@@ -20,7 +20,7 @@ const client = new Client({
 });
 
 // Let you know it worked
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`Success! Logged in as ${client.user.tag}`);
 });
 
@@ -29,9 +29,17 @@ client.on('messageCreate', (message) => {
     if (message.author.bot) return; // Ignore other bots
 
     if (message.content.toLowerCase() === '!ping') {
-        message.reply('Pong! 🏓 Mobile power!');
+        message.reply('Pong! 🏓 The bot is online & ready for commands!');
     }
 });
 
+// Handle unhandled promise rejections to prevent crashes
+process.on('unhandledRejection', (error) => {
+    console.error('Unhandled promise rejection:', error);
+});
+
 // Log in using your hidden Secret token
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN).catch((error) => {
+    console.error('Failed to log in:', error.message);
+    console.error('Make sure DISCORD_TOKEN is set correctly.');
+});
