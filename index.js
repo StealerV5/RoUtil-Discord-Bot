@@ -55,11 +55,36 @@ function didYouMean(query, topName) {
     return null;
 }
 
-async function robloxFetch(url, options = {}) {
-    const res = await fetch(url, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+async function robloxGet(url) {
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+// Roblox POST endpoints need an XSRF token.
+// We get it automatically from the 403 response header on the first attempt.
+let xsrfToken = null;
+
+async function robloxPost(url, body) {
+    const attempt = (token) => fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'x-csrf-token': token } : {})
+        },
+        body: JSON.stringify(body)
     });
+
+    let res = await attempt(xsrfToken);
+
+    if (res.status === 403) {
+        const newToken = res.headers.get('x-csrf-token');
+        if (newToken) {
+            xsrfToken = newToken;
+            res = await attempt(xsrfToken);
+        }
+    }
+
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
 }
@@ -67,7 +92,7 @@ async function robloxFetch(url, options = {}) {
 // ── Roblox API calls ──────────────────────────────────────────────────────────
 
 async function searchUsers(query) {
-    const data = await robloxFetch(
+    const data = await robloxGet(
         `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(query)}&limit=10`
     );
     return data.data || [];
@@ -75,41 +100,36 @@ async function searchUsers(query) {
 
 async function getUserStats(userId) {
     const [fl, fw] = await Promise.all([
-        robloxFetch(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
-        robloxFetch(`https://friends.roblox.com/v1/users/${userId}/followings/count`)
+        robloxGet(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
+        robloxGet(`https://friends.roblox.com/v1/users/${userId}/followings/count`)
     ]);
     return { followers: fl.count ?? 0, following: fw.count ?? 0 };
 }
 
 async function getUserGames(userId) {
-    const data = await robloxFetch(
+    const data = await robloxGet(
         `https://games.roblox.com/v2/users/${userId}/games?limit=5&sortOrder=Desc`
     );
     return data.data || [];
 }
 
-async function searchGames(query) {
-    // Roblox experience/game search endpoint
-    const data = await robloxFetch(
-        `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(query)}&model.maxRows=10&model.startRows=0&model.sortToken=&model.gameFilter=0&model.timeFilter=0&model.genreFilter=0`
-    );
-    return data.games || [];
-}
-
 async function searchCatalog(query) {
-    const data = await robloxFetch(
-        `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All&salesTypeFilter=1`
+    const data = await robloxGet(
+        `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All`
     );
     return data.data || [];
 }
 
 async function getCatalogDetails(items) {
     if (!items.length) return [];
-    const data = await robloxFetch('https://catalog.roblox.com/v1/catalog/items/details', {
-        method: 'POST',
-        body: JSON.stringify({ items })
-    });
+    const data = await robloxPost('https://catalog.roblox.com/v1/catalog/items/details', { items });
     return data.data || [];
+}
+
+// Fetch economy details (price, RAP) for a single asset via GET — no XSRF needed
+async function getAssetEconDetails(assetId) {
+    const data = await robloxGet(`https://economy.roblox.com/v2/assets/${assetId}/details`);
+    return data;
 }
 
 // ── Embed builders ────────────────────────────────────────────────────────────
@@ -149,31 +169,6 @@ async function buildUserEmbed(user, index, total, query) {
     return embed;
 }
 
-function buildGameEmbed(game, index, total, query) {
-    const placeId = game.placeId;
-    const url = placeId ? `https://www.roblox.com/games/${placeId}` : 'https://www.roblox.com';
-
-    const embed = new EmbedBuilder()
-        .setColor(0x57f287)
-        .setTitle(`🎮 ${game.name}`)
-        .setURL(url)
-        .setDescription((game.description || '_No description available._').slice(0, 400))
-        .addFields(
-            { name: '👥 Active Players', value: (game.playerCount ?? 0).toLocaleString(), inline: true },
-            { name: '👍 Up Votes',       value: (game.totalUpVotes ?? 0).toLocaleString(), inline: true },
-            { name: '👎 Down Votes',     value: (game.totalDownVotes ?? 0).toLocaleString(), inline: true }
-        )
-        .setFooter({ text: `Result ${index + 1} of ${total}  •  Game  •  Roblox` });
-
-    const correction = didYouMean(query, game.name);
-    if (correction) embed.setDescription(`${correction}\n\n${embed.data.description}`);
-
-    if (placeId) {
-        embed.setThumbnail(`https://www.roblox.com/asset-thumbnail/image?assetId=${placeId}&width=768&height=432&format=png`);
-    }
-
-    return embed;
-}
 
 function buildCatalogEmbed(item, index, total, query) {
     const price = item.price != null ? `R$${item.price.toLocaleString()}` : '🔒 Offsale';
@@ -206,7 +201,6 @@ function buildCatalogEmbed(item, index, total, query) {
 
 async function buildEmbed(result, index, total, query) {
     if (result.type === 'user')    return buildUserEmbed(result.data, index, total, query);
-    if (result.type === 'game')    return buildGameEmbed(result.data, index, total, query);
     if (result.type === 'catalog') return buildCatalogEmbed(result.data, index, total, query);
 }
 
@@ -263,7 +257,6 @@ client.on('messageCreate', async (message) => {
     if (command === 'find') {
         const TYPE_ALIASES = {
             user: 'user', users: 'user', player: 'user',
-            game: 'game', games: 'game', experience: 'game',
             item: 'catalog', items: 'catalog', catalog: 'catalog',
             marketplace: 'catalog', limited: 'catalog'
         };
@@ -271,12 +264,11 @@ client.on('messageCreate', async (message) => {
         if (!args.length) {
             return message.reply(
                 `❌ Please provide a search query.\n` +
-                `> **Usage:** \`${prefix}find [user|game|item] <name>\`\n` +
+                `> **Usage:** \`${prefix}find [user|item] <name>\`\n` +
                 `> **Examples:**\n` +
                 `> \`${prefix}find user Builderman\`\n` +
-                `> \`${prefix}find game Adopt Me\`\n` +
                 `> \`${prefix}find item Bloxy Cola\`\n` +
-                `> \`${prefix}find Builderman\` *(searches all)*`
+                `> \`${prefix}find Builderman\` *(searches users + marketplace)*`
             );
         }
 
@@ -289,36 +281,32 @@ client.on('messageCreate', async (message) => {
             return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Builderman\``);
         }
 
-        const typeLabel = searchType === 'all' ? 'all categories' : searchType === 'catalog' ? 'marketplace items' : `${searchType}s`;
+        const typeLabel = searchType === 'all' ? 'users & marketplace' : searchType === 'catalog' ? 'marketplace items' : 'users';
         const loading = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**…`);
 
         try {
-            let users = [], games = [], rawCatalog = [];
+            let users = [], rawCatalog = [];
 
             if (searchType === 'all' || searchType === 'user') {
                 users = await searchUsers(query).catch(() => []);
-            }
-            if (searchType === 'all' || searchType === 'game') {
-                games = await searchGames(query).catch(() => []);
             }
             if (searchType === 'all' || searchType === 'catalog') {
                 rawCatalog = await searchCatalog(query).catch(() => []);
             }
 
-            // Fetch full catalog details (includes RAP)
+            // Fetch full catalog details with XSRF token (includes price + RAP)
             let catalogItems = [];
             if (rawCatalog.length > 0) {
                 const payload = rawCatalog.map(i => ({
                     itemType: i.itemType === 'Bundle' ? 'Bundle' : 'Asset',
                     id: i.id
                 }));
-                catalogItems = await getCatalogDetails(payload).catch(() => rawCatalog.map(i => ({ ...i, itemType: 'Asset' })));
+                catalogItems = await getCatalogDetails(payload).catch(() => []);
             }
 
-            // Build combined results list
+            // Build combined results list: Users first, then catalog items
             const results = [
                 ...users.map(d => ({ type: 'user', data: d })),
-                ...games.map(d => ({ type: 'game', data: d })),
                 ...catalogItems.map(d => ({ type: 'catalog', data: d }))
             ];
 
