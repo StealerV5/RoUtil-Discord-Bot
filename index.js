@@ -89,15 +89,16 @@ async function getUserGames(userId) {
 }
 
 async function searchGames(query) {
+    // Roblox experience/game search endpoint
     const data = await robloxFetch(
-        `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(query)}&model.maxRows=10&model.startRows=0`
+        `https://games.roblox.com/v1/games/list?model.keyword=${encodeURIComponent(query)}&model.maxRows=10&model.startRows=0&model.sortToken=&model.gameFilter=0&model.timeFilter=0&model.genreFilter=0`
     );
     return data.games || [];
 }
 
 async function searchCatalog(query) {
     const data = await robloxFetch(
-        `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All`
+        `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All&salesTypeFilter=1`
     );
     return data.data || [];
 }
@@ -260,22 +261,49 @@ client.on('messageCreate', async (message) => {
 
     // ── !find ─────────────────────────────────────────────────────────────────
     if (command === 'find') {
+        const TYPE_ALIASES = {
+            user: 'user', users: 'user', player: 'user',
+            game: 'game', games: 'game', experience: 'game',
+            item: 'catalog', items: 'catalog', catalog: 'catalog',
+            marketplace: 'catalog', limited: 'catalog'
+        };
+
         if (!args.length) {
             return message.reply(
-                `❌ Please provide a search query.\n> **Usage:** \`${prefix}find <name>\`\n> **Example:** \`${prefix}find Builderman\``
+                `❌ Please provide a search query.\n` +
+                `> **Usage:** \`${prefix}find [user|game|item] <name>\`\n` +
+                `> **Examples:**\n` +
+                `> \`${prefix}find user Builderman\`\n` +
+                `> \`${prefix}find game Adopt Me\`\n` +
+                `> \`${prefix}find item Bloxy Cola\`\n` +
+                `> \`${prefix}find Builderman\` *(searches all)*`
             );
         }
 
-        const query = args.join(' ');
-        const loading = await message.reply('🔍 Searching Roblox…');
+        // Check if first arg is a type filter
+        const firstArg = args[0].toLowerCase();
+        let searchType = TYPE_ALIASES[firstArg] || 'all';
+        const query = searchType !== 'all' ? args.slice(1).join(' ') : args.join(' ');
+
+        if (searchType !== 'all' && !query) {
+            return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Builderman\``);
+        }
+
+        const typeLabel = searchType === 'all' ? 'all categories' : searchType === 'catalog' ? 'marketplace items' : `${searchType}s`;
+        const loading = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**…`);
 
         try {
-            // Run all three searches in parallel
-            const [users, games, rawCatalog] = await Promise.all([
-                searchUsers(query).catch(() => []),
-                searchGames(query).catch(() => []),
-                searchCatalog(query).catch(() => [])
-            ]);
+            let users = [], games = [], rawCatalog = [];
+
+            if (searchType === 'all' || searchType === 'user') {
+                users = await searchUsers(query).catch(() => []);
+            }
+            if (searchType === 'all' || searchType === 'game') {
+                games = await searchGames(query).catch(() => []);
+            }
+            if (searchType === 'all' || searchType === 'catalog') {
+                rawCatalog = await searchCatalog(query).catch(() => []);
+            }
 
             // Fetch full catalog details (includes RAP)
             let catalogItems = [];
@@ -284,10 +312,10 @@ client.on('messageCreate', async (message) => {
                     itemType: i.itemType === 'Bundle' ? 'Bundle' : 'Asset',
                     id: i.id
                 }));
-                catalogItems = await getCatalogDetails(payload).catch(() => []);
+                catalogItems = await getCatalogDetails(payload).catch(() => rawCatalog.map(i => ({ ...i, itemType: 'Asset' })));
             }
 
-            // Build combined results list: Users → Games → Catalog
+            // Build combined results list
             const results = [
                 ...users.map(d => ({ type: 'user', data: d })),
                 ...games.map(d => ({ type: 'game', data: d })),
