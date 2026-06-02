@@ -1,0 +1,13 @@
+{
+  "name": "routil-discord-bot",
+  "version": "1.0.0",
+  "description": "A 24/7 online Discord bot built on mobile",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2"
+  }
+}
