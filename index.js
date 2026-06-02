@@ -113,10 +113,10 @@ async function getUserGames(userId) {
     return data.data || [];
 }
 
-async function searchCatalog(query) {
-    const data = await robloxGet(
-        `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All`
-    );
+async function searchCatalog(query, creatorName = null) {
+    let url = `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All`;
+    if (creatorName) url += `&creatorName=${encodeURIComponent(creatorName)}`;
+    const data = await robloxGet(url);
     return data.data || [];
 }
 
@@ -264,10 +264,11 @@ client.on('messageCreate', async (message) => {
         if (!args.length) {
             return message.reply(
                 `❌ Please provide a search query.\n` +
-                `> **Usage:** \`${prefix}find [user|item] <name>\`\n` +
+                `> **Usage:** \`${prefix}find [user|item] <name> [by <creator>]\`\n` +
                 `> **Examples:**\n` +
                 `> \`${prefix}find user Builderman\`\n` +
                 `> \`${prefix}find item Bloxy Cola\`\n` +
+                `> \`${prefix}find item Bloxy Cola by Roblox\`\n` +
                 `> \`${prefix}find Builderman\` *(searches users + marketplace)*`
             );
         }
@@ -275,14 +276,27 @@ client.on('messageCreate', async (message) => {
         // Check if first arg is a type filter
         const firstArg = args[0].toLowerCase();
         let searchType = TYPE_ALIASES[firstArg] || 'all';
-        const query = searchType !== 'all' ? args.slice(1).join(' ') : args.join(' ');
+        let remaining = searchType !== 'all' ? args.slice(1) : args;
 
-        if (searchType !== 'all' && !query) {
-            return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Builderman\``);
+        // Parse optional "by <creator>" suffix from item searches
+        let creatorFilter = null;
+        if (searchType === 'catalog' || searchType === 'all') {
+            const byIndex = remaining.findIndex(a => a.toLowerCase() === 'by');
+            if (byIndex !== -1 && byIndex < remaining.length - 1) {
+                creatorFilter = remaining.slice(byIndex + 1).join(' ');
+                remaining = remaining.slice(0, byIndex);
+            }
         }
 
+        const query = remaining.join(' ');
+
+        if (!query) {
+            return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Bloxy Cola\``);
+        }
+
+        const creatorLabel = creatorFilter ? ` by **${creatorFilter}**` : '';
         const typeLabel = searchType === 'all' ? 'users & marketplace' : searchType === 'catalog' ? 'marketplace items' : 'users';
-        const loading = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**…`);
+        const loading = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**${creatorLabel}…`);
 
         try {
             let users = [], rawCatalog = [];
@@ -291,7 +305,7 @@ client.on('messageCreate', async (message) => {
                 users = await searchUsers(query).catch(() => []);
             }
             if (searchType === 'all' || searchType === 'catalog') {
-                rawCatalog = await searchCatalog(query).catch(() => []);
+                rawCatalog = await searchCatalog(query, creatorFilter).catch(() => []);
             }
 
             // Fetch full catalog details with XSRF token (includes price + RAP)
