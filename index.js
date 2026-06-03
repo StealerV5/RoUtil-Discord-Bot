@@ -47,7 +47,8 @@ const COMMANDS = [
     { name: '!setprefix <new>',                desc: 'Change the command prefix for this server. Requires **Manage Server**.' },
     { name: '!find [user|item] <query>',       desc: 'Search Roblox for users or marketplace items.' },
     { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
-    { name: '!verifysetup',                    desc: 'Run the 3-step Roblox verification setup wizard. Requires **Manage Server**.' },
+    { name: '!verifysetup',                    desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
+    { name: '!verify',                         desc: 'Link your Roblox account to this server via bio code or gamepass check.' },
     { name: '!cmds [page]',                    desc: 'Show this commands list. 10 commands per page.' },
 ];
 
@@ -484,6 +485,17 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
+// ── Verify helper ─────────────────────────────────────────────────────────────
+
+async function assignVerifiedRoles(member, config) {
+    if (config.verifiedRoleId) {
+        await member.roles.add(config.verifiedRoleId).catch(e => console.error('Add verified role:', e.message));
+    }
+    if (config.joinRoleId && member.roles.cache.has(config.joinRoleId)) {
+        await member.roles.remove(config.joinRoleId).catch(e => console.error('Remove join role:', e.message));
+    }
+}
+
 // ── Message listener ──────────────────────────────────────────────────────────
 
 client.on('messageCreate', async (message) => {
@@ -570,6 +582,158 @@ client.on('messageCreate', async (message) => {
         );
 
         return message.reply({ embeds: [embed], components: [menu] });
+    }
+
+    // ── !verify ───────────────────────────────────────────────────────────────
+    if (command === 'verify') {
+        const config = verifyConfig[message.guild.id];
+        if (!config) {
+            return message.reply('❌ Verification has not been set up for this server yet. An admin can run `!verifysetup` to configure it.');
+        }
+
+        if (config.verifiedRoleId && message.member.roles.cache.has(config.verifiedRoleId)) {
+            return message.reply('✅ You are already verified!');
+        }
+
+        const promptMsg = await message.reply('🔍 What is your **Roblox username**? Reply within 60 seconds.');
+
+        const usernameCollector = message.channel.createMessageCollector({
+            filter: m => m.author.id === message.author.id,
+            max: 1,
+            time: 60_000
+        });
+
+        usernameCollector.on('collect', async (usernameMsg) => {
+            const username = usernameMsg.content.trim();
+
+            let robloxUser;
+            try {
+                const res = await fetch('https://users.roblox.com/v1/usernames/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usernames: [username], excludeBannedUsers: true })
+                });
+                const data = await res.json();
+                robloxUser = data.data?.[0];
+            } catch {
+                return message.reply('❌ Failed to contact Roblox. Please try again later.');
+            }
+
+            if (!robloxUser) {
+                return message.reply(`❌ No Roblox user found with the username **${username}**. Check the spelling and try again.`);
+            }
+
+            // ── Gamepass method ──────────────────────────────────────────────
+            if (config.method === 'gamepass') {
+                const checking = await message.reply(`🎫 Checking if **${robloxUser.name}** owns the gamepass...`);
+                try {
+                    const gpRes  = await fetch(`https://inventory.roblox.com/v1/users/${robloxUser.id}/items/GamePass/${config.gamepasId}`);
+                    const gpData = await gpRes.json();
+
+                    if (gpData.data?.length > 0) {
+                        await assignVerifiedRoles(message.member, config);
+                        await checking.edit(`✅ Verified! **${robloxUser.name}** owns the gamepass — you've been given the verified role.`);
+                    } else {
+                        await checking.edit(`❌ **${robloxUser.name}** does not own the required gamepass (ID: \`${config.gamepasId}\`).`);
+                    }
+                } catch {
+                    await checking.edit('❌ Failed to check gamepass ownership. Please try again later.');
+                }
+                return;
+            }
+
+            // ── Bio method ───────────────────────────────────────────────────
+            const code = `routil-${message.author.id.slice(-6)}-${Math.random().toString(36).slice(2, 6)}`;
+
+            const bioEmbed = () => new EmbedBuilder()
+                .setColor(0x5865f2)
+                .setTitle('🔖 Bio Verification')
+                .setDescription(
+                    `Add the code below **exactly** to your [Roblox profile bio](https://www.roblox.com/my/account#!/info), then click **Verify**.\n\n` +
+                    `\`\`\`${code}\`\`\``
+                )
+                .addFields({ name: '👤 Roblox Account', value: `**${robloxUser.name}** (ID: \`${robloxUser.id}\`)`, inline: false })
+                .setFooter({ text: 'Expires in 5 minutes  •  You can try as many times as you need' });
+
+            const bioRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('verify_check').setLabel('✅ Verify').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('verify_cancel').setLabel('Cancel').setStyle(ButtonStyle.Secondary)
+            );
+
+            const bioMsg = await message.reply({ embeds: [bioEmbed()], components: [bioRow] });
+
+            const btnCollector = bioMsg.createMessageComponentCollector({
+                filter: i => i.user.id === message.author.id,
+                time: 300_000
+            });
+
+            btnCollector.on('collect', async (interaction) => {
+                if (interaction.customId === 'verify_cancel') {
+                    await interaction.update({
+                        embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('❌ Verification Cancelled').setDescription('Run `!verify` again whenever you\'re ready.')],
+                        components: []
+                    });
+                    btnCollector.stop('cancelled');
+                    return;
+                }
+
+                await interaction.deferUpdate();
+
+                let profile;
+                try {
+                    const profileRes = await fetch(`https://users.roblox.com/v1/users/${robloxUser.id}`);
+                    profile = await profileRes.json();
+                } catch {
+                    await bioMsg.edit({ content: '❌ Failed to reach Roblox. Please try again.', embeds: [bioEmbed()], components: [bioRow] });
+                    return;
+                }
+
+                if (profile.description?.includes(code)) {
+                    await assignVerifiedRoles(message.member, config);
+                    await bioMsg.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0x57f287)
+                                .setTitle('✅ Verification Successful!')
+                                .setDescription(`Your Discord account is now linked to **${robloxUser.name}**! You've been given the verified role.`)
+                                .addFields({ name: '🎮 Roblox Account', value: `**${robloxUser.name}** (ID: \`${robloxUser.id}\`)`, inline: false })
+                        ],
+                        components: []
+                    });
+                    btnCollector.stop('verified');
+                } else {
+                    await bioMsg.edit({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setColor(0xfee75c)
+                                .setTitle('🔖 Bio Verification — Code Not Found')
+                                .setDescription(
+                                    `The code wasn't found in **${robloxUser.name}**'s bio yet. Make sure it's copied exactly:\n\n` +
+                                    `\`\`\`${code}\`\`\`\n` +
+                                    `[Open your Roblox profile settings](https://www.roblox.com/my/account#!/info)`
+                                )
+                                .addFields({ name: '👤 Roblox Account', value: `**${robloxUser.name}** (ID: \`${robloxUser.id}\`)`, inline: false })
+                                .setFooter({ text: 'Expires in 5 minutes  •  You can try as many times as you need' })
+                        ],
+                        components: [bioRow]
+                    });
+                }
+            });
+
+            btnCollector.on('end', (_, reason) => {
+                if (reason !== 'verified' && reason !== 'cancelled') {
+                    bioMsg.edit({ components: [] }).catch(() => {});
+                }
+            });
+        });
+
+        usernameCollector.on('end', (collected) => {
+            if (collected.size === 0) {
+                promptMsg.edit('⏱️ Verification timed out. Run `!verify` again when you\'re ready.').catch(() => {});
+            }
+        });
+
+        return;
     }
 
     // ── !cmds ─────────────────────────────────────────────────────────────────

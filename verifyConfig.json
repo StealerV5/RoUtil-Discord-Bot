@@ -1,9 +1,11 @@
 {
     "1490361207079702758": {
         "method": "bio",
-        "title": "Hello",
-        "description": "Test",
+        "title": "767",
+        "description": "87",
         "thumbnail": null,
-        "style": "embed"
+        "style": "embed",
+        "joinRoleId": "1490361277598666856",
+        "verifiedRoleId": "1511387263668326512"
     }
 }
