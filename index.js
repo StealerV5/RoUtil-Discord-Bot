@@ -1,4 +1,9 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+    Client, GatewayIntentBits, EmbedBuilder,
+    ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    StringSelectMenuBuilder, ModalBuilder,
+    TextInputBuilder, TextInputStyle
+} = require('discord.js');
 const express = require('express');
 const fs = require('fs');
 
@@ -22,16 +27,29 @@ if (fs.existsSync('./prefixes.json')) {
     prefixes = JSON.parse(fs.readFileSync('./prefixes.json', 'utf8'));
 }
 
+// ── Verification config ───────────────────────────────────────────────────────
+
+let verifyConfig = {};
+if (fs.existsSync('./verifyConfig.json')) {
+    verifyConfig = JSON.parse(fs.readFileSync('./verifyConfig.json', 'utf8'));
+}
+function saveVerifyConfig() {
+    fs.writeFileSync('./verifyConfig.json', JSON.stringify(verifyConfig, null, 4));
+}
+
+// Tracks in-progress setup sessions: guildId → state object
+const verifySetupState = new Map();
+
+// ── Ready ─────────────────────────────────────────────────────────────────────
+
 client.once('clientReady', () => {
     console.log(`Success! Logged in as ${client.user.tag}`);
 });
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Levenshtein distance — used for "did you mean?" corrections
 function levenshtein(a, b) {
-    a = a.toLowerCase();
-    b = b.toLowerCase();
+    a = a.toLowerCase(); b = b.toLowerCase();
     const m = [];
     for (let i = 0; i <= b.length; i++) m[i] = [i];
     for (let j = 0; j <= a.length; j++) m[0][j] = j;
@@ -45,13 +63,10 @@ function levenshtein(a, b) {
     return m[b.length][a.length];
 }
 
-// Returns "Did you mean X?" string if the top result name differs from query
 function didYouMean(query, topName) {
     const dist = levenshtein(query, topName);
     const threshold = Math.max(2, Math.floor(query.length / 3));
-    if (dist > 0 && dist <= threshold) {
-        return `💡 Did you mean **${topName}**?`;
-    }
+    if (dist > 0 && dist <= threshold) return `💡 Did you mean **${topName}**?`;
     return null;
 }
 
@@ -61,43 +76,28 @@ async function robloxGet(url) {
     return res.json();
 }
 
-// Roblox POST endpoints need an XSRF token.
-// We get it automatically from the 403 response header on the first attempt.
 let xsrfToken = null;
-
 async function robloxPost(url, body) {
     const attempt = (token) => fetch(url, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'x-csrf-token': token } : {})
-        },
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'x-csrf-token': token } : {}) },
         body: JSON.stringify(body)
     });
-
     let res = await attempt(xsrfToken);
-
     if (res.status === 403) {
         const newToken = res.headers.get('x-csrf-token');
-        if (newToken) {
-            xsrfToken = newToken;
-            res = await attempt(xsrfToken);
-        }
+        if (newToken) { xsrfToken = newToken; res = await attempt(xsrfToken); }
     }
-
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
 }
 
-// ── Roblox API calls ──────────────────────────────────────────────────────────
+// ── Roblox API ────────────────────────────────────────────────────────────────
 
 async function searchUsers(query) {
-    const data = await robloxGet(
-        `https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(query)}&limit=10`
-    );
+    const data = await robloxGet(`https://users.roblox.com/v1/users/search?keyword=${encodeURIComponent(query)}&limit=10`);
     return data.data || [];
 }
-
 async function getUserStats(userId) {
     const [fl, fw] = await Promise.all([
         robloxGet(`https://friends.roblox.com/v1/users/${userId}/followers/count`),
@@ -105,31 +105,20 @@ async function getUserStats(userId) {
     ]);
     return { followers: fl.count ?? 0, following: fw.count ?? 0 };
 }
-
 async function getUserGames(userId) {
-    const data = await robloxGet(
-        `https://games.roblox.com/v2/users/${userId}/games?limit=5&sortOrder=Desc`
-    );
+    const data = await robloxGet(`https://games.roblox.com/v2/users/${userId}/games?limit=5&sortOrder=Desc`);
     return data.data || [];
 }
-
 async function searchCatalog(query, creatorName = null) {
     let url = `https://catalog.roblox.com/v1/search/items?keyword=${encodeURIComponent(query)}&limit=10&category=All`;
     if (creatorName) url += `&creatorName=${encodeURIComponent(creatorName)}`;
     const data = await robloxGet(url);
     return data.data || [];
 }
-
 async function getCatalogDetails(items) {
     if (!items.length) return [];
     const data = await robloxPost('https://catalog.roblox.com/v1/catalog/items/details', { items });
     return data.data || [];
-}
-
-// Fetch economy details (price, RAP) for a single asset via GET — no XSRF needed
-async function getAssetEconDetails(assetId) {
-    const data = await robloxGet(`https://economy.roblox.com/v2/assets/${assetId}/details`);
-    return data;
 }
 
 // ── Embed builders ────────────────────────────────────────────────────────────
@@ -146,16 +135,14 @@ async function buildUserEmbed(user, index, total, query) {
     const desc = user.blurb ? user.blurb.slice(0, 350) : '_No description set._';
     embed.setDescription((correction ? `${correction}\n\n` : '') + desc);
 
-    // Follower / following counts
     try {
         const stats = await getUserStats(user.id);
         embed.addFields(
             { name: '👥 Followers', value: stats.followers.toLocaleString(), inline: true },
             { name: '➡️ Following', value: stats.following.toLocaleString(), inline: true }
         );
-    } catch { /* skip if rate-limited */ }
+    } catch { }
 
-    // Top games this user owns
     try {
         const games = await getUserGames(user.id);
         if (games.length > 0) {
@@ -164,11 +151,10 @@ async function buildUserEmbed(user, index, total, query) {
                 .join('\n');
             embed.addFields({ name: '🎮 Their Games', value: gameList });
         }
-    } catch { /* skip */ }
+    } catch { }
 
     return embed;
 }
-
 
 function buildCatalogEmbed(item, index, total, query) {
     const price = item.price != null ? `R$${item.price.toLocaleString()}` : '🔒 Offsale';
@@ -181,20 +167,17 @@ function buildCatalogEmbed(item, index, total, query) {
         .setURL(`https://www.roblox.com/catalog/${item.id}`)
         .setDescription((item.description || '_No description available._').slice(0, 400))
         .addFields(
-            { name: '💰 Price',         value: price,      inline: true },
-            { name: '📈 RAP',           value: rap,        inline: true },
-            { name: '📉 Lowest Price',  value: lowestPrice, inline: true },
-            { name: '🏷️ Type',          value: item.itemType ?? 'Asset',    inline: true },
-            { name: '👤 Creator',       value: item.creatorName ?? 'Unknown', inline: true }
+            { name: '💰 Price',        value: price,                         inline: true },
+            { name: '📈 RAP',          value: rap,                           inline: true },
+            { name: '📉 Lowest Price', value: lowestPrice,                   inline: true },
+            { name: '🏷️ Type',         value: item.itemType ?? 'Asset',      inline: true },
+            { name: '👤 Creator',      value: item.creatorName ?? 'Unknown', inline: true }
         )
         .setFooter({ text: `Result ${index + 1} of ${total}  •  Catalog  •  Roblox` });
 
     const correction = didYouMean(query, item.name);
     if (correction) embed.setDescription(`${correction}\n\n${embed.data.description}`);
-
-    if (item.id) {
-        embed.setThumbnail(`https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=420&height=420&format=png`);
-    }
+    if (item.id) embed.setThumbnail(`https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=420&height=420&format=png`);
 
     return embed;
 }
@@ -204,25 +187,223 @@ async function buildEmbed(result, index, total, query) {
     if (result.type === 'catalog') return buildCatalogEmbed(result.data, index, total, query);
 }
 
-function buildButtons(page, total) {
+function buildFindButtons(page, total) {
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('find_prev')
-            .setLabel('◀ Prev')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === 0),
-        new ButtonBuilder()
-            .setCustomId('find_info')
-            .setLabel(`${page + 1} / ${total}`)
-            .setStyle(ButtonStyle.Primary)
-            .setDisabled(true),
-        new ButtonBuilder()
-            .setCustomId('find_next')
-            .setLabel('Next ▶')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(page === total - 1)
+        new ButtonBuilder().setCustomId('find_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId('find_info').setLabel(`${page + 1} / ${total}`).setStyle(ButtonStyle.Primary).setDisabled(true),
+        new ButtonBuilder().setCustomId('find_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(page === total - 1)
     );
 }
+
+// ── Verify Setup — interaction handler ───────────────────────────────────────
+
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.guild) return;
+    const gid = interaction.guild.id;
+
+    // Only handle interactions that belong to a live setup session
+    const isSetupInteraction =
+        (interaction.isStringSelectMenu() && (interaction.customId === `vs_q1_${gid}` || interaction.customId === `vs_q3_${gid}`)) ||
+        (interaction.isButton()           &&  interaction.customId === `vs_next_${gid}`) ||
+        (interaction.isModalSubmit()      && (interaction.customId === `vs_gpmodal_${gid}` || interaction.customId === `vs_q2modal_${gid}`));
+
+    if (!isSetupInteraction) return;
+
+    const state = verifySetupState.get(gid);
+    if (!state) return;
+
+    if (interaction.user.id !== state.authorId) {
+        return interaction.reply({ content: '❌ Only the person who started setup can interact with this.', ephemeral: true });
+    }
+
+    try {
+        // ── Q1: Choose verification method ────────────────────────────────────
+        if (interaction.isStringSelectMenu() && interaction.customId === `vs_q1_${gid}`) {
+            state.method = interaction.values[0];
+
+            if (state.method === 'gamepass') {
+                await interaction.showModal(
+                    new ModalBuilder()
+                        .setCustomId(`vs_gpmodal_${gid}`)
+                        .setTitle('Gamepass ID')
+                        .addComponents(
+                            new ActionRowBuilder().addComponents(
+                                new TextInputBuilder()
+                                    .setCustomId('gamepass_id')
+                                    .setLabel('Enter your Roblox Gamepass ID')
+                                    .setStyle(TextInputStyle.Short)
+                                    .setPlaceholder('e.g. 123456789')
+                                    .setMinLength(1).setMaxLength(20)
+                                    .setRequired(true)
+                            )
+                        )
+                );
+            } else {
+                // Bio — go straight to step 1 complete + Next button
+                await interaction.update({
+                    embeds: [
+                        new EmbedBuilder()
+                            .setColor(0x57f287)
+                            .setTitle('✅ Step 1 Complete — Bio Verification')
+                            .setDescription(
+                                'Members will receive a **unique code** to paste into their Roblox profile bio.\n' +
+                                'RoUtil will check the bio automatically when they run the verify command.\n\n' +
+                                'Click **Next** to customise what the verification message looks like.'
+                            )
+                            .setFooter({ text: 'Step 1 of 3 complete' })
+                    ],
+                    components: [
+                        new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`vs_next_${gid}`)
+                                .setLabel('Next: Customise Message →')
+                                .setStyle(ButtonStyle.Primary)
+                        )
+                    ]
+                });
+            }
+        }
+
+        // ── Gamepass modal submit ─────────────────────────────────────────────
+        if (interaction.isModalSubmit() && interaction.customId === `vs_gpmodal_${gid}`) {
+            state.gamepasId = interaction.fields.getTextInputValue('gamepass_id').trim();
+
+            await interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x57f287)
+                        .setTitle('✅ Step 1 Complete — Gamepass Verification')
+                        .setDescription(
+                            `Gamepass ID \`${state.gamepasId}\` saved.\n\n` +
+                            'Members must own the **"RoUtil"** gamepass in your game to verify their account.\n\n' +
+                            'Click **Next** to customise what the verification message looks like.'
+                        )
+                        .setFooter({ text: 'Step 1 of 3 complete' })
+                ],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`vs_next_${gid}`)
+                            .setLabel('Next: Customise Message →')
+                            .setStyle(ButtonStyle.Primary)
+                    )
+                ]
+            });
+        }
+
+        // ── Next button → open Q2 modal ───────────────────────────────────────
+        if (interaction.isButton() && interaction.customId === `vs_next_${gid}`) {
+            await interaction.showModal(
+                new ModalBuilder()
+                    .setCustomId(`vs_q2modal_${gid}`)
+                    .setTitle('Step 2 — Verification Message')
+                    .addComponents(
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('msg_title')
+                                .setLabel('Title')
+                                .setStyle(TextInputStyle.Short)
+                                .setPlaceholder('e.g. Verify your Roblox Account')
+                                .setMaxLength(256).setRequired(true)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('msg_description')
+                                .setLabel('Description')
+                                .setStyle(TextInputStyle.Paragraph)
+                                .setPlaceholder('Explain how members should verify...')
+                                .setMaxLength(2000).setRequired(true)
+                        ),
+                        new ActionRowBuilder().addComponents(
+                            new TextInputBuilder()
+                                .setCustomId('msg_thumbnail')
+                                .setLabel('Thumbnail Image URL (optional)')
+                                .setStyle(TextInputStyle.Short)
+                                .setPlaceholder('https://example.com/image.png')
+                                .setRequired(false)
+                        )
+                    )
+            );
+        }
+
+        // ── Q2 modal submit → show Q3 ─────────────────────────────────────────
+        if (interaction.isModalSubmit() && interaction.customId === `vs_q2modal_${gid}`) {
+            state.title       = interaction.fields.getTextInputValue('msg_title').trim();
+            state.description = interaction.fields.getTextInputValue('msg_description').trim();
+            state.thumbnail   = interaction.fields.getTextInputValue('msg_thumbnail').trim() || null;
+
+            await interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle('📋 Step 3 of 3 — Message Style')
+                        .setDescription(
+                            'Should the verification message be sent as a **rich embed** or **plain text**?\n\n' +
+                            '> 🎨 **Embed** — A colourful card showing your title, description, and thumbnail image.\n\n' +
+                            '> 📝 **Simple Text** — A plain text message with no extra formatting.'
+                        )
+                        .addFields(
+                            { name: '📌 Your Title',       value: state.title,                                                     inline: false },
+                            { name: '📄 Your Description', value: state.description.slice(0, 200) + (state.description.length > 200 ? '…' : ''), inline: false },
+                            ...(state.thumbnail ? [{ name: '🖼️ Thumbnail', value: state.thumbnail, inline: false }] : [])
+                        )
+                        .setFooter({ text: 'Step 3 of 3 • Almost done!' })
+                ],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId(`vs_q3_${gid}`)
+                            .setPlaceholder('Choose a message style...')
+                            .addOptions(
+                                { label: 'Embed', description: 'Rich card with title, description, and thumbnail', value: 'embed', emoji: '🎨' },
+                                { label: 'Simple Text', description: 'Plain text message with no formatting', value: 'text', emoji: '📝' }
+                            )
+                    )
+                ]
+            });
+        }
+
+        // ── Q3: Style → save config + summary ────────────────────────────────
+        if (interaction.isStringSelectMenu() && interaction.customId === `vs_q3_${gid}`) {
+            state.style = interaction.values[0];
+
+            verifyConfig[gid] = {
+                method:      state.method,
+                gamepasId:   state.method === 'gamepass' ? state.gamepasId : undefined,
+                title:       state.title,
+                description: state.description,
+                thumbnail:   state.thumbnail,
+                style:       state.style
+            };
+            saveVerifyConfig();
+            verifySetupState.delete(gid);
+
+            const methodText = state.method === 'bio'
+                ? '🔖 Bio Verification'
+                : `🎫 Gamepass Verification (ID: \`${state.gamepasId}\`)`;
+
+            const summary = new EmbedBuilder()
+                .setColor(0x57f287)
+                .setTitle('🎉 Verification Setup Complete!')
+                .setDescription('Your verification system is configured and ready. Here\'s a summary of what was saved:')
+                .addFields(
+                    { name: '🔐 Verification Method', value: methodText,                                                                      inline: false },
+                    { name: '📝 Message Title',        value: state.title,                                                                     inline: true  },
+                    { name: '🎨 Message Style',        value: state.style === 'embed' ? '🎨 Embed' : '📝 Simple Text',                         inline: true  },
+                    { name: '📄 Description Preview',  value: state.description.slice(0, 200) + (state.description.length > 200 ? '…' : ''),   inline: false },
+                    ...(state.thumbnail ? [{ name: '🖼️ Thumbnail', value: state.thumbnail, inline: false }] : [])
+                )
+                .setFooter({ text: 'Members can now run !verify to link their Roblox account' });
+
+            if (state.thumbnail) summary.setThumbnail(state.thumbnail);
+
+            await interaction.update({ embeds: [summary], components: [] });
+        }
+
+    } catch (err) {
+        console.error('Verify setup interaction error:', err);
+    }
+});
 
 // ── Message listener ──────────────────────────────────────────────────────────
 
@@ -253,6 +434,63 @@ client.on('messageCreate', async (message) => {
         return message.reply(`✅ Prefix changed to \`${newPrefix}\``);
     }
 
+    // ── !verifysetup ──────────────────────────────────────────────────────────
+    if (command === 'verifysetup') {
+        if (!message.member.permissions.has('ManageGuild')) {
+            return message.reply('❌ You need the **Manage Server** permission to run verification setup.');
+        }
+
+        // Cancel any existing setup session for this server
+        verifySetupState.set(message.guild.id, { authorId: message.author.id });
+
+        // Auto-expire after 5 minutes
+        setTimeout(() => {
+            const s = verifySetupState.get(message.guild.id);
+            if (s && s.authorId === message.author.id) verifySetupState.delete(message.guild.id);
+        }, 300_000);
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle('🔐 RoUtil Verification Setup')
+            .setDescription(
+                'Welcome to the **RoUtil Verification Setup Wizard!**\n' +
+                'This will configure how members link their Roblox account to this server.\n\u200b'
+            )
+            .addFields(
+                {
+                    name: '📋 What we\'ll set up',
+                    value:
+                        '**Step 1 —** Choose how members verify their Roblox account\n' +
+                        '**Step 2 —** Write the verification message (title, description, thumbnail)\n' +
+                        '**Step 3 —** Choose whether the message is a rich embed or plain text',
+                    inline: false
+                },
+                {
+                    name: '🔖 Bio Verification',
+                    value: 'RoUtil gives each member a unique code. They paste it into their **Roblox profile bio** to prove account ownership.',
+                    inline: false
+                },
+                {
+                    name: '🎫 Gamepass Verification',
+                    value: 'Members must own a specific gamepass (named **"RoUtil"**) in your Roblox game. You supply the **Gamepass ID**.',
+                    inline: false
+                }
+            )
+            .setFooter({ text: 'Only you can interact with this setup  •  Expires in 5 minutes' });
+
+        const menu = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId(`vs_q1_${message.guild.id}`)
+                .setPlaceholder('📋 Step 1 — How should members verify?')
+                .addOptions(
+                    { label: 'Bio Verification',      description: 'Member pastes a unique code into their Roblox bio',          value: 'bio',      emoji: '🔖' },
+                    { label: 'Gamepass Verification', description: 'Member owns a "RoUtil" gamepass in your Roblox game',         value: 'gamepass', emoji: '🎫' }
+                )
+        );
+
+        return message.reply({ embeds: [embed], components: [menu] });
+    }
+
     // ── !find ─────────────────────────────────────────────────────────────────
     if (command === 'find') {
         const TYPE_ALIASES = {
@@ -273,74 +511,50 @@ client.on('messageCreate', async (message) => {
             );
         }
 
-        // Check if first arg is a type filter
         const firstArg = args[0].toLowerCase();
         let searchType = TYPE_ALIASES[firstArg] || 'all';
-        let remaining = searchType !== 'all' ? args.slice(1) : args;
+        let remaining  = searchType !== 'all' ? args.slice(1) : args;
 
-        // Parse optional "by <creator>" suffix from item searches
         let creatorFilter = null;
         if (searchType === 'catalog' || searchType === 'all') {
             const byIndex = remaining.findIndex(a => a.toLowerCase() === 'by');
             if (byIndex !== -1 && byIndex < remaining.length - 1) {
                 creatorFilter = remaining.slice(byIndex + 1).join(' ');
-                remaining = remaining.slice(0, byIndex);
+                remaining     = remaining.slice(0, byIndex);
             }
         }
 
         const query = remaining.join(' ');
-
-        if (!query) {
-            return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Bloxy Cola\``);
-        }
+        if (!query) return message.reply(`❌ Please provide a name to search. Example: \`${prefix}find ${firstArg} Bloxy Cola\``);
 
         const creatorLabel = creatorFilter ? ` by **${creatorFilter}**` : '';
-        const typeLabel = searchType === 'all' ? 'users & marketplace' : searchType === 'catalog' ? 'marketplace items' : 'users';
-        const loading = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**${creatorLabel}…`);
+        const typeLabel    = searchType === 'all' ? 'users & marketplace' : searchType === 'catalog' ? 'marketplace items' : 'users';
+        const loading      = await message.reply(`🔍 Searching Roblox ${typeLabel} for **"${query}"**${creatorLabel}…`);
 
         try {
             let users = [], rawCatalog = [];
 
-            if (searchType === 'all' || searchType === 'user') {
-                users = await searchUsers(query).catch(() => []);
-            }
-            if (searchType === 'all' || searchType === 'catalog') {
-                rawCatalog = await searchCatalog(query, creatorFilter).catch(() => []);
-            }
+            if (searchType === 'all' || searchType === 'user')    users      = await searchUsers(query).catch(() => []);
+            if (searchType === 'all' || searchType === 'catalog') rawCatalog = await searchCatalog(query, creatorFilter).catch(() => []);
 
-            // Fetch full catalog details with XSRF token (includes price + RAP)
             let catalogItems = [];
             if (rawCatalog.length > 0) {
-                const payload = rawCatalog.map(i => ({
-                    itemType: i.itemType === 'Bundle' ? 'Bundle' : 'Asset',
-                    id: i.id
-                }));
+                const payload = rawCatalog.map(i => ({ itemType: i.itemType === 'Bundle' ? 'Bundle' : 'Asset', id: i.id }));
                 catalogItems = await getCatalogDetails(payload).catch(() => []);
             }
 
-            // Build combined results list: Users first, then catalog items
             const results = [
-                ...users.map(d => ({ type: 'user', data: d })),
+                ...users.map(d => ({ type: 'user',    data: d })),
                 ...catalogItems.map(d => ({ type: 'catalog', data: d }))
             ];
 
             if (results.length === 0) {
-                return loading.edit({
-                    content: `❌ No results found for **"${query}"**.\n> Check your spelling and try again.`,
-                    embeds: [],
-                    components: []
-                });
+                return loading.edit({ content: `❌ No results found for **"${query}"**.\n> Check your spelling and try again.`, embeds: [], components: [] });
             }
 
             let page = 0;
-            const embed = await buildEmbed(results[page], page, results.length, query);
-            await loading.edit({
-                content: null,
-                embeds: [embed],
-                components: [buildButtons(page, results.length)]
-            });
+            await loading.edit({ content: null, embeds: [await buildEmbed(results[0], 0, results.length, query)], components: [buildFindButtons(0, results.length)] });
 
-            // Button collector — only the original user can page through results
             const collector = loading.createMessageComponentCollector({
                 filter: i => i.user.id === message.author.id,
                 time: 120_000
@@ -349,15 +563,9 @@ client.on('messageCreate', async (message) => {
             collector.on('collect', async (interaction) => {
                 if (interaction.customId === 'find_prev' && page > 0) page--;
                 if (interaction.customId === 'find_next' && page < results.length - 1) page++;
-
-                const newEmbed = await buildEmbed(results[page], page, results.length, query);
-                await interaction.update({
-                    embeds: [newEmbed],
-                    components: [buildButtons(page, results.length)]
-                });
+                await interaction.update({ embeds: [await buildEmbed(results[page], page, results.length, query)], components: [buildFindButtons(page, results.length)] });
             });
 
-            // Disable buttons after 2 minutes of inactivity
             collector.on('end', () => {
                 const disabled = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('find_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
@@ -369,11 +577,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (err) {
             console.error('Find command error:', err);
-            loading.edit({
-                content: '❌ Something went wrong while searching Roblox. Please try again.',
-                embeds: [],
-                components: []
-            }).catch(() => {});
+            loading.edit({ content: '❌ Something went wrong while searching Roblox. Please try again.', embeds: [], components: [] }).catch(() => {});
         }
     }
 });
