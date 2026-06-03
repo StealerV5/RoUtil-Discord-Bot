@@ -1,8 +1,8 @@
 const {
     Client, GatewayIntentBits, EmbedBuilder,
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
-    StringSelectMenuBuilder, ModalBuilder,
-    TextInputBuilder, TextInputStyle
+    StringSelectMenuBuilder, RoleSelectMenuBuilder,
+    ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 const express = require('express');
 const fs = require('fs');
@@ -17,7 +17,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
@@ -214,6 +215,7 @@ client.on('interactionCreate', async (interaction) => {
     // Only handle interactions that belong to a live setup session
     const isSetupInteraction =
         (interaction.isStringSelectMenu() && (interaction.customId === `vs_q1_${gid}` || interaction.customId === `vs_q3_${gid}`)) ||
+        (interaction.isRoleSelectMenu()   && (interaction.customId === `vs_q4a_${gid}` || interaction.customId === `vs_q4b_${gid}`)) ||
         (interaction.isButton()           &&  interaction.customId === `vs_next_${gid}`) ||
         (interaction.isModalSubmit()      && (interaction.customId === `vs_gpmodal_${gid}` || interaction.customId === `vs_q2modal_${gid}`));
 
@@ -260,7 +262,7 @@ client.on('interactionCreate', async (interaction) => {
                                 'RoUtil will check the bio automatically when they run the verify command.\n\n' +
                                 'Click **Next** to customise what the verification message looks like.'
                             )
-                            .setFooter({ text: 'Step 1 of 3 complete' })
+                            .setFooter({ text: 'Step 1 of 5 complete' })
                     ],
                     components: [
                         new ActionRowBuilder().addComponents(
@@ -288,7 +290,7 @@ client.on('interactionCreate', async (interaction) => {
                             'Members must own the **"RoUtil"** gamepass in your game to verify their account.\n\n' +
                             'Click **Next** to customise what the verification message looks like.'
                         )
-                        .setFooter({ text: 'Step 1 of 3 complete' })
+                        .setFooter({ text: 'Step 1 of 5 complete' })
                 ],
                 components: [
                     new ActionRowBuilder().addComponents(
@@ -357,7 +359,7 @@ client.on('interactionCreate', async (interaction) => {
                             { name: '📄 Your Description', value: state.description.slice(0, 200) + (state.description.length > 200 ? '…' : ''), inline: false },
                             ...(state.thumbnail ? [{ name: '🖼️ Thumbnail', value: state.thumbnail, inline: false }] : [])
                         )
-                        .setFooter({ text: 'Step 3 of 3 • Almost done!' })
+                        .setFooter({ text: 'Step 3 of 5 • Halfway there!' })
                 ],
                 components: [
                     new ActionRowBuilder().addComponents(
@@ -373,17 +375,70 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
 
-        // ── Q3: Style → save config + summary ────────────────────────────────
+        // ── Q3: Style → show Q4a (join role) ─────────────────────────────────
         if (interaction.isStringSelectMenu() && interaction.customId === `vs_q3_${gid}`) {
             state.style = interaction.values[0];
 
+            await interaction.update({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle('👋 Step 4 of 5 — Join Role')
+                        .setDescription(
+                            'Select the role to **automatically give every new member** when they join the server.\n\n' +
+                            '> This is typically an "Unverified" or "Member" role that restricts channel access until they verify.'
+                        )
+                        .setFooter({ text: 'Step 4 of 5' })
+                ],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new RoleSelectMenuBuilder()
+                            .setCustomId(`vs_q4a_${gid}`)
+                            .setPlaceholder('Select the join role...')
+                    )
+                ]
+            });
+        }
+
+        // ── Q4a: Join role → show Q4b (verified role) ────────────────────────
+        if (interaction.isRoleSelectMenu() && interaction.customId === `vs_q4a_${gid}`) {
+            state.joinRoleId = interaction.values[0];
+
+            await interaction.update({
+                embeds: [
+                    new EmbedBuilder()
+                        .setColor(0x5865f2)
+                        .setTitle('✅ Step 5 of 5 — Verified Role')
+                        .setDescription(
+                            'Select the role to give members **once they successfully verify** their Roblox account.\n\n' +
+                            '> This is typically a "Verified" role that grants access to the rest of the server.'
+                        )
+                        .addFields({ name: '👋 Join Role', value: `<@&${state.joinRoleId}>`, inline: true })
+                        .setFooter({ text: 'Step 5 of 5 • Final step!' })
+                ],
+                components: [
+                    new ActionRowBuilder().addComponents(
+                        new RoleSelectMenuBuilder()
+                            .setCustomId(`vs_q4b_${gid}`)
+                            .setPlaceholder('Select the verified role...')
+                    )
+                ]
+            });
+        }
+
+        // ── Q4b: Verified role → save config + summary ────────────────────────
+        if (interaction.isRoleSelectMenu() && interaction.customId === `vs_q4b_${gid}`) {
+            state.verifiedRoleId = interaction.values[0];
+
             verifyConfig[gid] = {
-                method:      state.method,
-                gamepasId:   state.method === 'gamepass' ? state.gamepasId : undefined,
-                title:       state.title,
-                description: state.description,
-                thumbnail:   state.thumbnail,
-                style:       state.style
+                method:        state.method,
+                gamepasId:     state.method === 'gamepass' ? state.gamepasId : undefined,
+                title:         state.title,
+                description:   state.description,
+                thumbnail:     state.thumbnail,
+                style:         state.style,
+                joinRoleId:    state.joinRoleId,
+                verifiedRoleId: state.verifiedRoleId
             };
             saveVerifyConfig();
             verifySetupState.delete(gid);
@@ -395,12 +450,14 @@ client.on('interactionCreate', async (interaction) => {
             const summary = new EmbedBuilder()
                 .setColor(0x57f287)
                 .setTitle('🎉 Verification Setup Complete!')
-                .setDescription('Your verification system is configured and ready. Here\'s a summary of what was saved:')
+                .setDescription('Your verification system is fully configured. Here\'s a summary:')
                 .addFields(
-                    { name: '🔐 Verification Method', value: methodText,                                                                      inline: false },
-                    { name: '📝 Message Title',        value: state.title,                                                                     inline: true  },
-                    { name: '🎨 Message Style',        value: state.style === 'embed' ? '🎨 Embed' : '📝 Simple Text',                         inline: true  },
-                    { name: '📄 Description Preview',  value: state.description.slice(0, 200) + (state.description.length > 200 ? '…' : ''),   inline: false },
+                    { name: '🔐 Verification Method', value: methodText,                                                                                       inline: false },
+                    { name: '📝 Message Title',        value: state.title,                                                                                      inline: true  },
+                    { name: '🎨 Message Style',        value: state.style === 'embed' ? '🎨 Embed' : '📝 Simple Text',                                          inline: true  },
+                    { name: '👋 Join Role',            value: `<@&${state.joinRoleId}> — given to every new member on join`,                                    inline: false },
+                    { name: '✅ Verified Role',        value: `<@&${state.verifiedRoleId}> — given when a member verifies`,                                     inline: false },
+                    { name: '📄 Description Preview',  value: state.description.slice(0, 200) + (state.description.length > 200 ? '…' : ''),                   inline: false },
                     ...(state.thumbnail ? [{ name: '🖼️ Thumbnail', value: state.thumbnail, inline: false }] : [])
                 )
                 .setFooter({ text: 'Members can now run !verify to link their Roblox account' });
@@ -412,6 +469,18 @@ client.on('interactionCreate', async (interaction) => {
 
     } catch (err) {
         console.error('Verify setup interaction error:', err);
+    }
+});
+
+// ── Auto-assign join role on member join ──────────────────────────────────────
+
+client.on('guildMemberAdd', async (member) => {
+    const config = verifyConfig[member.guild.id];
+    if (!config?.joinRoleId) return;
+    try {
+        await member.roles.add(config.joinRoleId);
+    } catch (err) {
+        console.error(`Failed to assign join role to ${member.user.tag}:`, err.message);
     }
 });
 
@@ -472,7 +541,9 @@ client.on('messageCreate', async (message) => {
                     value:
                         '**Step 1 —** Choose how members verify their Roblox account\n' +
                         '**Step 2 —** Write the verification message (title, description, thumbnail)\n' +
-                        '**Step 3 —** Choose whether the message is a rich embed or plain text',
+                        '**Step 3 —** Choose whether the message is a rich embed or plain text\n' +
+                        '**Step 4 —** Select the role given to every new member on join\n' +
+                        '**Step 5 —** Select the role given when a member verifies',
                     inline: false
                 },
                 {
