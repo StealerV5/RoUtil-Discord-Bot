@@ -40,6 +40,16 @@ function saveVerifyConfig() {
 // Tracks in-progress setup sessions: guildId → state object
 const verifySetupState = new Map();
 
+// ── Commands list (update this array every time a new command is added) ───────
+const COMMANDS = [
+    { name: '!ping',                           desc: 'Check if the bot is online.' },
+    { name: '!setprefix <new>',                desc: 'Change the command prefix for this server. Requires **Manage Server**.' },
+    { name: '!find [user|item] <query>',       desc: 'Search Roblox for users or marketplace items.' },
+    { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
+    { name: '!verifysetup',                    desc: 'Run the 3-step Roblox verification setup wizard. Requires **Manage Server**.' },
+    { name: '!cmds [page]',                    desc: 'Show this commands list. 10 commands per page.' },
+];
+
 // ── Ready ─────────────────────────────────────────────────────────────────────
 
 client.once('clientReady', () => {
@@ -489,6 +499,57 @@ client.on('messageCreate', async (message) => {
         );
 
         return message.reply({ embeds: [embed], components: [menu] });
+    }
+
+    // ── !cmds ─────────────────────────────────────────────────────────────────
+    if (command === 'cmds') {
+        const PAGE_SIZE  = 10;
+        const totalPages = Math.ceil(COMMANDS.length / PAGE_SIZE);
+        let page = Math.max(1, Math.min(parseInt(args[0]) || 1, totalPages));
+
+        const buildCmdsEmbed = (p) => {
+            const slice = COMMANDS.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
+            return new EmbedBuilder()
+                .setColor(0x5865f2)
+                .setTitle('📖 RoUtil — Commands')
+                .setDescription(slice.map(c => `**${c.name}**\n${c.desc}`).join('\n\n'))
+                .setFooter({ text: `Page ${p} of ${totalPages}  •  ${COMMANDS.length} commands total` });
+        };
+
+        const buildCmdsButtons = (p) => new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(p === 1),
+            new ButtonBuilder().setCustomId('cmds_page').setLabel(`${p} / ${totalPages}`).setStyle(ButtonStyle.Primary).setDisabled(true),
+            new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(p === totalPages)
+        );
+
+        const cmdsMsg = await message.reply({
+            embeds: [buildCmdsEmbed(page)],
+            components: totalPages > 1 ? [buildCmdsButtons(page)] : []
+        });
+
+        if (totalPages <= 1) return;
+
+        const collector = cmdsMsg.createMessageComponentCollector({
+            filter: i => i.user.id === message.author.id,
+            time: 120_000
+        });
+
+        collector.on('collect', async (interaction) => {
+            if (interaction.customId === 'cmds_prev' && page > 1) page--;
+            if (interaction.customId === 'cmds_next' && page < totalPages) page++;
+            await interaction.update({ embeds: [buildCmdsEmbed(page)], components: [buildCmdsButtons(page)] });
+        });
+
+        collector.on('end', () => {
+            const disabled = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Primary).setDisabled(true),
+                new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(true)
+            );
+            cmdsMsg.edit({ components: [disabled] }).catch(() => {});
+        });
+
+        return;
     }
 
     // ── !find ─────────────────────────────────────────────────────────────────

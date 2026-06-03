@@ -1,0 +1,1 @@
+- [RoUtil cmds list](routil-cmds.md) — always update the COMMANDS array in index.js when adding a new command to this bot.
