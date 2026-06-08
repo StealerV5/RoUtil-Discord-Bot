@@ -2,6 +2,8 @@ const {
     Client, GatewayIntentBits, EmbedBuilder,
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
     StringSelectMenuBuilder, RoleSelectMenuBuilder,
+    ChannelSelectMenuBuilder, ChannelType,
+    PermissionFlagsBits, AttachmentBuilder,
     ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 const express = require('express');
@@ -44,8 +46,40 @@ function saveVerifyConfig() {
     fs.writeFileSync('./verifyConfig.json', JSON.stringify(verifyConfig, null, 4));
 }
 
+// ── Report config ─────────────────────────────────────────────────────────────
+
+let reportConfig = {};
+if (fs.existsSync('./reportConfig.json')) {
+    reportConfig = JSON.parse(fs.readFileSync('./reportConfig.json', 'utf8'));
+}
+function saveReportConfig() {
+    fs.writeFileSync('./reportConfig.json', JSON.stringify(reportConfig, null, 4));
+}
+
+// ── Appeal config ─────────────────────────────────────────────────────────────
+
+let appealConfig = {};
+if (fs.existsSync('./appealConfig.json')) {
+    appealConfig = JSON.parse(fs.readFileSync('./appealConfig.json', 'utf8'));
+}
+function saveAppealConfig() {
+    fs.writeFileSync('./appealConfig.json', JSON.stringify(appealConfig, null, 4));
+}
+
+// ── Tickets database ──────────────────────────────────────────────────────────
+
+let tickets = { channels: {}, activeReports: {}, activeAppeals: {}, nextReportId: 1, nextAppealId: 1 };
+if (fs.existsSync('./tickets.json')) {
+    tickets = { ...tickets, ...JSON.parse(fs.readFileSync('./tickets.json', 'utf8')) };
+}
+function saveTickets() {
+    fs.writeFileSync('./tickets.json', JSON.stringify(tickets, null, 4));
+}
+
 // Tracks in-progress setup sessions: guildId → state object
-const verifySetupState = new Map();
+const verifySetupState  = new Map();
+const reportSetupState  = new Map();
+const appealSetupState  = new Map();
 
 // ── Commands list (update this array every time a new command is added) ───────
 const COMMANDS = [
@@ -53,6 +87,8 @@ const COMMANDS = [
     { name: '!setprefix <new>',                desc: 'Change the command prefix for this server. Requires **Manage Server**.' },
     { name: '!find [user|item] <query>',       desc: 'Search Roblox for users or marketplace items.' },
     { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
+    { name: '!reportsetup',                    desc: 'Set up the player report ticket system. Requires **Manage Server**.' },
+    { name: '!appealsetup',                    desc: 'Set up the ban appeal ticket system. Requires **Manage Server**.' },
     { name: '!verifysetup',                    desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
     { name: '!verify',                         desc: 'Link your Roblox account to this server via bio code or gamepass check.' },
     { name: '!whois @user',                    desc: 'Look up the Roblox account linked to a Discord user.' },
@@ -224,23 +260,23 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.guild) return;
     const gid = interaction.guild.id;
 
-    // Only handle interactions that belong to a live setup session
-    const isSetupInteraction =
-        (interaction.isStringSelectMenu() && (interaction.customId === `vs_q1_${gid}` || interaction.customId === `vs_q3_${gid}`)) ||
-        (interaction.isRoleSelectMenu()   && (interaction.customId === `vs_q4a_${gid}` || interaction.customId === `vs_q4b_${gid}`)) ||
-        (interaction.isButton()           &&  interaction.customId === `vs_next_${gid}`) ||
-        (interaction.isModalSubmit()      && (interaction.customId === `vs_gpmodal_${gid}` || interaction.customId === `vs_q2modal_${gid}`));
-
-    if (!isSetupInteraction) return;
-
-    const state = verifySetupState.get(gid);
-    if (!state) return;
-
-    if (interaction.user.id !== state.authorId) {
-        return interaction.reply({ content: '❌ Only the person who started setup can interact with this.', ephemeral: true });
-    }
-
     try {
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SECTION A — VERIFY SETUP  (vs_* custom IDs)
+        // ══════════════════════════════════════════════════════════════════════
+        const isVerifyInteraction =
+            (interaction.isStringSelectMenu() && (interaction.customId === `vs_q1_${gid}` || interaction.customId === `vs_q3_${gid}`)) ||
+            (interaction.isRoleSelectMenu()   && (interaction.customId === `vs_q4a_${gid}` || interaction.customId === `vs_q4b_${gid}`)) ||
+            (interaction.isButton()           &&  interaction.customId === `vs_next_${gid}`) ||
+            (interaction.isModalSubmit()      && (interaction.customId === `vs_gpmodal_${gid}` || interaction.customId === `vs_q2modal_${gid}`));
+
+        if (isVerifyInteraction) {
+            const state = verifySetupState.get(gid);
+            if (!state) return;
+            if (interaction.user.id !== state.authorId) {
+                return interaction.reply({ content: '❌ Only the person who started setup can interact with this.', ephemeral: true });
+            }
         // ── Q1: Choose verification method ────────────────────────────────────
         if (interaction.isStringSelectMenu() && interaction.customId === `vs_q1_${gid}`) {
             state.method = interaction.values[0];
@@ -479,8 +515,503 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.update({ embeds: [summary], components: [] });
         }
 
+            return; // end of verify setup section
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SECTION B — REPORT SETUP  (rs_* custom IDs)
+        // ══════════════════════════════════════════════════════════════════════
+        const isReportSetup =
+            (interaction.isChannelSelectMenu() && (interaction.customId === `rs_cat_${gid}` || interaction.customId === `rs_log_${gid}`)) ||
+            (interaction.isRoleSelectMenu()    &&  interaction.customId === `rs_mod_${gid}`);
+
+        if (isReportSetup) {
+            const state = reportSetupState.get(gid);
+            if (!state) return;
+            if (interaction.user.id !== state.authorId) {
+                return interaction.reply({ content: '❌ Only the person who started setup can interact with this.', ephemeral: true });
+            }
+
+            // Step 1 → category chosen, ask for log channel
+            if (interaction.customId === `rs_cat_${gid}`) {
+                state.categoryId = interaction.values[0];
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0xe74c3c).setTitle('🚨 Report Setup — Step 2 of 3')
+                        .setDescription('Select the **text channel** where report summaries will be logged.')
+                        .setFooter({ text: 'Step 2 of 3' })],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ChannelSelectMenuBuilder().setCustomId(`rs_log_${gid}`).setPlaceholder('Select log channel...').setChannelTypes(ChannelType.GuildText)
+                    )]
+                });
+            }
+
+            // Step 2 → log channel chosen, ask for mod role
+            if (interaction.customId === `rs_log_${gid}`) {
+                state.logChannelId = interaction.values[0];
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0xe74c3c).setTitle('🚨 Report Setup — Step 3 of 3')
+                        .setDescription('Select the **Moderator Role** that can manage and action reports.')
+                        .setFooter({ text: 'Step 3 of 3 • Final step!' })],
+                    components: [new ActionRowBuilder().addComponents(
+                        new RoleSelectMenuBuilder().setCustomId(`rs_mod_${gid}`).setPlaceholder('Select moderator role...')
+                    )]
+                });
+            }
+
+            // Step 3 → mod role chosen, save config + send panel
+            if (interaction.customId === `rs_mod_${gid}`) {
+                state.modRoleId = interaction.values[0];
+                reportConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleId: state.modRoleId };
+                saveReportConfig();
+                reportSetupState.delete(gid);
+
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Report Setup Complete!')
+                        .setDescription('The report panel has been posted. Use `!reportsetup` to reconfigure.')
+                        .addFields(
+                            { name: '📁 Category',    value: `<#${state.categoryId}>`,   inline: true },
+                            { name: '📋 Log Channel', value: `<#${state.logChannelId}>`, inline: true },
+                            { name: '🛡️ Mod Role',   value: `<@&${state.modRoleId}>`,   inline: true }
+                        )],
+                    components: []
+                });
+
+                // Post the persistent report panel
+                await interaction.channel.send({
+                    embeds: [new EmbedBuilder().setColor(0xe74c3c)
+                        .setTitle('🚨 Player Report System')
+                        .setDescription('Use the button below to report exploiters, hackers, teamers, bypassers, or rule breakers. Please provide valid evidence.')],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('report_create').setLabel('📝 Create Report').setStyle(ButtonStyle.Danger)
+                    )]
+                });
+            }
+
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SECTION C — APPEAL SETUP  (as_* custom IDs)
+        // ══════════════════════════════════════════════════════════════════════
+        const isAppealSetup =
+            (interaction.isChannelSelectMenu() && (interaction.customId === `as_cat_${gid}` || interaction.customId === `as_log_${gid}`)) ||
+            (interaction.isRoleSelectMenu()    &&  interaction.customId === `as_mod_${gid}`);
+
+        if (isAppealSetup) {
+            const state = appealSetupState.get(gid);
+            if (!state) return;
+            if (interaction.user.id !== state.authorId) {
+                return interaction.reply({ content: '❌ Only the person who started setup can interact with this.', ephemeral: true });
+            }
+
+            if (interaction.customId === `as_cat_${gid}`) {
+                state.categoryId = interaction.values[0];
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0x3498db).setTitle('📩 Appeal Setup — Step 2 of 3')
+                        .setDescription('Select the **text channel** where appeal summaries will be logged.')
+                        .setFooter({ text: 'Step 2 of 3' })],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ChannelSelectMenuBuilder().setCustomId(`as_log_${gid}`).setPlaceholder('Select log channel...').setChannelTypes(ChannelType.GuildText)
+                    )]
+                });
+            }
+
+            if (interaction.customId === `as_log_${gid}`) {
+                state.logChannelId = interaction.values[0];
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0x3498db).setTitle('📩 Appeal Setup — Step 3 of 3')
+                        .setDescription('Select the **Moderator Role** that can manage and action appeals.')
+                        .setFooter({ text: 'Step 3 of 3 • Final step!' })],
+                    components: [new ActionRowBuilder().addComponents(
+                        new RoleSelectMenuBuilder().setCustomId(`as_mod_${gid}`).setPlaceholder('Select moderator role...')
+                    )]
+                });
+            }
+
+            if (interaction.customId === `as_mod_${gid}`) {
+                state.modRoleId = interaction.values[0];
+                appealConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleId: state.modRoleId };
+                saveAppealConfig();
+                appealSetupState.delete(gid);
+
+                await interaction.update({
+                    embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Appeal Setup Complete!')
+                        .setDescription('The appeal panel has been posted. Use `!appealsetup` to reconfigure.')
+                        .addFields(
+                            { name: '📁 Category',    value: `<#${state.categoryId}>`,   inline: true },
+                            { name: '📋 Log Channel', value: `<#${state.logChannelId}>`, inline: true },
+                            { name: '🛡️ Mod Role',   value: `<@&${state.modRoleId}>`,   inline: true }
+                        )],
+                    components: []
+                });
+
+                await interaction.channel.send({
+                    embeds: [new EmbedBuilder().setColor(0x3498db)
+                        .setTitle('📩 Ban Appeal System')
+                        .setDescription('If you believe your punishment was unfair, submit an appeal using the button below.')],
+                    components: [new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setCustomId('appeal_create').setLabel('📨 Create Appeal').setStyle(ButtonStyle.Primary)
+                    )]
+                });
+            }
+
+            return;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // SECTION D — TICKET BUTTONS
+        // ══════════════════════════════════════════════════════════════════════
+        if (!interaction.isButton()) return;
+
+        // ── Helper: run Q&A in a ticket channel ───────────────────────────────
+        async function collectAnswers(channel, userId, questions) {
+            const answers = [];
+            for (const q of questions) {
+                await channel.send(q);
+                const res = await channel.awaitMessages({
+                    filter: m => m.author.id === userId,
+                    max: 1,
+                    time: 300_000
+                }).catch(() => null);
+                if (!res || res.size === 0) return null;
+                answers.push(res.first().content);
+            }
+            return answers;
+        }
+
+        // ── Create Report Ticket ───────────────────────────────────────────────
+        if (interaction.customId === 'report_create') {
+            const cfg = reportConfig[gid];
+            if (!cfg) return interaction.reply({ content: '❌ Reports are not set up. Ask an admin to run `!reportsetup`.', ephemeral: true });
+
+            const key = `${gid}_${interaction.user.id}`;
+            if (tickets.activeReports[key]) {
+                const existing = interaction.guild.channels.cache.get(tickets.activeReports[key]);
+                if (existing) return interaction.reply({ content: `❌ You already have an open report: ${existing}`, ephemeral: true });
+                delete tickets.activeReports[key];
+                saveTickets();
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            // Create private ticket channel
+            const channel = await interaction.guild.channels.create({
+                name: `report-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)}`,
+                type: ChannelType.GuildText,
+                parent: cfg.categoryId,
+                permissionOverwrites: [
+                    { id: interaction.guild.id,          deny:  [PermissionFlagsBits.ViewChannel] },
+                    { id: interaction.user.id,           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: cfg.modRoleId,                 allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: interaction.client.user.id,    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
+                ]
+            });
+
+            const ticketId = `R-${String(tickets.nextReportId++).padStart(4, '0')}`;
+            tickets.activeReports[key] = channel.id;
+            saveTickets();
+
+            await interaction.editReply({ content: `✅ Report ticket created: ${channel}` });
+
+            // Send intro embed
+            await channel.send({
+                content: `<@${interaction.user.id}>`,
+                embeds: [new EmbedBuilder().setColor(0xe74c3c).setTitle('🚨 Report Submission')
+                    .setDescription(
+                        `**Ticket ID:** \`${ticketId}\`\n\n` +
+                        'Answer the questions below one at a time. You have **5 minutes** per answer.\n\n' +
+                        '**1.** Roblox Username of Suspect\n' +
+                        '**2.** What happened?\n' +
+                        '**3.** Video Evidence Link\n' +
+                        '**4.** Additional Evidence (or type `none`)'
+                    )]
+            });
+
+            // Collect answers
+            const answers = await collectAnswers(channel, interaction.user.id, [
+                '**[1/4]** What is the **Roblox username** of the suspect?',
+                '**[2/4]** What **happened**? Describe the incident in detail.',
+                '**[3/4]** Provide a **video evidence link** (YouTube, Gyazo, Streamable, etc.).',
+                '**[4/4]** Any **additional evidence or info**? (type `none` if not applicable)'
+            ]);
+
+            if (!answers) {
+                await channel.send('⏱️ Timed out. This channel will be deleted in 10 seconds.');
+                delete tickets.activeReports[key];
+                saveTickets();
+                setTimeout(() => channel.delete().catch(() => {}), 10_000);
+                return;
+            }
+
+            // Post to log channel
+            const logCh = interaction.guild.channels.cache.get(cfg.logChannelId);
+            if (!logCh) return;
+
+            const logEmbed = new EmbedBuilder().setColor(0xe74c3c).setTitle(`🚨 Report — ${ticketId}`)
+                .addFields(
+                    { name: '🆔 Report ID',       value: ticketId,                                                   inline: true  },
+                    { name: '👤 Reporter',         value: `${interaction.user.tag} (<@${interaction.user.id}>)`,      inline: true  },
+                    { name: '🎮 Suspect Username', value: answers[0],                                                 inline: true  },
+                    { name: '📝 What Happened',    value: answers[1].slice(0, 1024),                                  inline: false },
+                    { name: '🎥 Video Evidence',   value: answers[2],                                                 inline: false },
+                    { name: '📎 Additional Info',  value: answers[3],                                                 inline: false },
+                    { name: '📅 Date',             value: `<t:${Math.floor(Date.now() / 1000)}:F>`,                   inline: true  },
+                    { name: '🔄 Status',           value: '🟡 Pending Review',                                        inline: true  }
+                );
+
+            const logRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`ticket_accept_${channel.id}`).setLabel('✅ Accept Report').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`ticket_reject_${channel.id}`).setLabel('❌ Reject Report').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId(`ticket_close_${channel.id}`).setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Secondary)
+            );
+
+            const logMsg = await logCh.send({ embeds: [logEmbed], components: [logRow] });
+
+            // Persist
+            tickets.channels[channel.id] = {
+                type: 'report', guildId: gid, userId: interaction.user.id,
+                ticketId, logMessageId: logMsg.id, logChannelId: cfg.logChannelId,
+                status: 'pending', answers
+            };
+            saveTickets();
+
+            await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Report Submitted')
+                .setDescription('Your report has been submitted to the moderation team. Please stand by.')
+                .addFields({ name: '🆔 Ticket ID', value: ticketId, inline: true })] });
+        }
+
+        // ── Create Appeal Ticket ───────────────────────────────────────────────
+        if (interaction.customId === 'appeal_create') {
+            const cfg = appealConfig[gid];
+            if (!cfg) return interaction.reply({ content: '❌ Appeals are not set up. Ask an admin to run `!appealsetup`.', ephemeral: true });
+
+            const key = `${gid}_${interaction.user.id}`;
+            if (tickets.activeAppeals[key]) {
+                const existing = interaction.guild.channels.cache.get(tickets.activeAppeals[key]);
+                if (existing) return interaction.reply({ content: `❌ You already have an open appeal: ${existing}`, ephemeral: true });
+                delete tickets.activeAppeals[key];
+                saveTickets();
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            const channel = await interaction.guild.channels.create({
+                name: `appeal-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)}`,
+                type: ChannelType.GuildText,
+                parent: cfg.categoryId,
+                permissionOverwrites: [
+                    { id: interaction.guild.id,          deny:  [PermissionFlagsBits.ViewChannel] },
+                    { id: interaction.user.id,           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: cfg.modRoleId,                 allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: interaction.client.user.id,    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
+                ]
+            });
+
+            const ticketId = `A-${String(tickets.nextAppealId++).padStart(4, '0')}`;
+            tickets.activeAppeals[key] = channel.id;
+            saveTickets();
+
+            await interaction.editReply({ content: `✅ Appeal ticket created: ${channel}` });
+
+            await channel.send({
+                content: `<@${interaction.user.id}>`,
+                embeds: [new EmbedBuilder().setColor(0x3498db).setTitle('📩 Appeal Submission')
+                    .setDescription(
+                        `**Ticket ID:** \`${ticketId}\`\n\n` +
+                        'Answer the questions below one at a time. You have **5 minutes** per answer.\n\n' +
+                        '**1.** Your Roblox Username\n' +
+                        '**2.** Punishment Type\n' +
+                        '**3.** Punishment Reason\n' +
+                        '**4.** Why should it be removed?\n' +
+                        '**5.** Additional Information (or type `none`)'
+                    )]
+            });
+
+            const answers = await collectAnswers(channel, interaction.user.id, [
+                '**[1/5]** What is your **Roblox username**?',
+                '**[2/5]** What type of **punishment** did you receive? (e.g. Ban, Mute, Kick)',
+                '**[3/5]** What was the stated **reason** for your punishment?',
+                '**[4/5]** Why do you believe this punishment should be **removed or reduced**?',
+                '**[5/5]** Any **additional information**? (type `none` if not applicable)'
+            ]);
+
+            if (!answers) {
+                await channel.send('⏱️ Timed out. This channel will be deleted in 10 seconds.');
+                delete tickets.activeAppeals[key];
+                saveTickets();
+                setTimeout(() => channel.delete().catch(() => {}), 10_000);
+                return;
+            }
+
+            const logCh = interaction.guild.channels.cache.get(cfg.logChannelId);
+            if (!logCh) return;
+
+            const logEmbed = new EmbedBuilder().setColor(0x3498db).setTitle(`📩 Appeal — ${ticketId}`)
+                .addFields(
+                    { name: '🆔 Appeal ID',         value: ticketId,                                                  inline: true  },
+                    { name: '💬 Discord User',       value: `${interaction.user.tag} (<@${interaction.user.id}>)`,    inline: true  },
+                    { name: '🎮 Roblox Username',    value: answers[0],                                               inline: true  },
+                    { name: '⚖️ Punishment Type',    value: answers[1],                                               inline: true  },
+                    { name: '📋 Punishment Reason',  value: answers[2],                                               inline: false },
+                    { name: '📝 Appeal Statement',   value: answers[3].slice(0, 1024),                                inline: false },
+                    { name: '📎 Additional Info',    value: answers[4],                                               inline: false },
+                    { name: '📅 Date Submitted',     value: `<t:${Math.floor(Date.now() / 1000)}:F>`,                 inline: true  },
+                    { name: '🔄 Status',             value: '🟡 Pending',                                             inline: true  }
+                );
+
+            const logRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`ticket_accept_${channel.id}`).setLabel('✅ Accept Appeal').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId(`ticket_deny_${channel.id}`).setLabel('❌ Deny Appeal').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId(`ticket_close_${channel.id}`).setLabel('🔒 Close Ticket').setStyle(ButtonStyle.Secondary)
+            );
+
+            const logMsg = await logCh.send({ embeds: [logEmbed], components: [logRow] });
+
+            tickets.channels[channel.id] = {
+                type: 'appeal', guildId: gid, userId: interaction.user.id,
+                ticketId, logMessageId: logMsg.id, logChannelId: cfg.logChannelId,
+                status: 'pending', answers
+            };
+            saveTickets();
+
+            await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Appeal Submitted')
+                .setDescription('Your appeal has been submitted to the moderation team. Please stand by.')
+                .addFields({ name: '🆔 Ticket ID', value: ticketId, inline: true })] });
+        }
+
+        // ── Accept ─────────────────────────────────────────────────────────────
+        if (interaction.customId.startsWith('ticket_accept_')) {
+            const channelId = interaction.customId.slice('ticket_accept_'.length);
+            const ticket = tickets.channels[channelId];
+            if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
+            const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
+            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
+                return interaction.reply({ content: '❌ You need the moderator role to action tickets.', ephemeral: true });
+
+            const newStatus = ticket.type === 'report' ? '🟡 Under Investigation' : '🟢 Accepted';
+            ticket.status   = ticket.type === 'report' ? 'under_investigation' : 'accepted';
+            saveTickets();
+
+            // Update log embed
+            const logCh = interaction.guild.channels.cache.get(ticket.logChannelId);
+            if (logCh) {
+                const logMsg = await logCh.messages.fetch(ticket.logMessageId).catch(() => null);
+                if (logMsg) {
+                    const idx = logMsg.embeds[0].fields.findIndex(f => f.name === '🔄 Status');
+                    const updated = EmbedBuilder.from(logMsg.embeds[0]).spliceFields(idx, 1, { name: '🔄 Status', value: newStatus, inline: true })
+                        .addFields({ name: '✅ Actioned By', value: interaction.user.tag, inline: true });
+                    await logMsg.edit({ embeds: [updated] });
+                }
+            }
+
+            // Notify in ticket channel
+            const ticketCh = interaction.guild.channels.cache.get(channelId);
+            if (ticketCh) await ticketCh.send({ embeds: [new EmbedBuilder()
+                .setColor(ticket.type === 'report' ? 0xfee75c : 0x57f287)
+                .setTitle(ticket.type === 'report' ? '🟡 Report Accepted — Under Investigation' : '🟢 Appeal Accepted')
+                .setDescription(ticket.type === 'report'
+                    ? `Your report (**${ticket.ticketId}**) has been accepted and is now under investigation.`
+                    : `Your appeal (**${ticket.ticketId}**) has been **accepted**. Your punishment will be reviewed.`)
+                .addFields({ name: '🛡️ Reviewed by', value: interaction.user.tag, inline: true })] });
+
+            await interaction.reply({ content: `✅ ${ticket.type === 'report' ? 'Report accepted — Under Investigation.' : 'Appeal accepted.'}`, ephemeral: true });
+        }
+
+        // ── Reject / Deny ──────────────────────────────────────────────────────
+        if (interaction.customId.startsWith('ticket_reject_') || interaction.customId.startsWith('ticket_deny_')) {
+            const isReject  = interaction.customId.startsWith('ticket_reject_');
+            const channelId = interaction.customId.slice(isReject ? 'ticket_reject_'.length : 'ticket_deny_'.length);
+            const ticket    = tickets.channels[channelId];
+            if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
+            const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
+            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
+                return interaction.reply({ content: '❌ You need the moderator role to action tickets.', ephemeral: true });
+
+            ticket.status = 'rejected';
+            saveTickets();
+
+            const logCh = interaction.guild.channels.cache.get(ticket.logChannelId);
+            if (logCh) {
+                const logMsg = await logCh.messages.fetch(ticket.logMessageId).catch(() => null);
+                if (logMsg) {
+                    const idx = logMsg.embeds[0].fields.findIndex(f => f.name === '🔄 Status');
+                    const updated = EmbedBuilder.from(logMsg.embeds[0]).spliceFields(idx, 1, { name: '🔄 Status', value: '🔴 Rejected', inline: true })
+                        .addFields({ name: '❌ Rejected By', value: interaction.user.tag, inline: true });
+                    await logMsg.edit({ embeds: [updated] });
+                }
+            }
+
+            const ticketCh = interaction.guild.channels.cache.get(channelId);
+            if (ticketCh) await ticketCh.send({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('🔴 Rejected')
+                .setDescription(ticket.type === 'report'
+                    ? `Your report (**${ticket.ticketId}**) has been **rejected** — it did not meet the requirements for action.`
+                    : `Your appeal (**${ticket.ticketId}**) has been **denied** — the moderation team has decided to uphold the punishment.`)
+                .addFields({ name: '🛡️ Reviewed by', value: interaction.user.tag, inline: true })] });
+
+            await interaction.reply({ content: `✅ ${ticket.type} ${isReject ? 'rejected' : 'denied'}.`, ephemeral: true });
+        }
+
+        // ── Close Ticket ───────────────────────────────────────────────────────
+        if (interaction.customId.startsWith('ticket_close_')) {
+            const channelId = interaction.customId.slice('ticket_close_'.length);
+            const ticket    = tickets.channels[channelId];
+            if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
+            const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
+            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
+                return interaction.reply({ content: '❌ You need the moderator role to close tickets.', ephemeral: true });
+
+            const ticketCh = interaction.guild.channels.cache.get(channelId);
+            if (!ticketCh) return interaction.reply({ content: '❌ Channel not found.', ephemeral: true });
+
+            // Build transcript
+            const messages = await ticketCh.messages.fetch({ limit: 100 }).catch(() => null);
+            let transcript = `=== TICKET TRANSCRIPT ===\nTicket ID: ${ticket.ticketId}\nType: ${ticket.type.toUpperCase()}\nClosed by: ${interaction.user.tag}\nDate: ${new Date().toUTCString()}\n========================\n\n`;
+            if (messages) {
+                for (const msg of [...messages.values()].reverse()) {
+                    transcript += `[${new Date(msg.createdTimestamp).toUTCString()}] ${msg.author.tag}: ${msg.content}\n`;
+                }
+            }
+
+            // Post transcript + close notice to log channel
+            const logCh = interaction.guild.channels.cache.get(ticket.logChannelId);
+            if (logCh) {
+                await logCh.send({
+                    embeds: [new EmbedBuilder().setColor(0x7289da).setTitle(`🔒 Ticket Closed — ${ticket.ticketId}`)
+                        .addFields(
+                            { name: '🆔 Ticket ID',  value: ticket.ticketId,          inline: true },
+                            { name: '👤 User',        value: `<@${ticket.userId}>`,    inline: true },
+                            { name: '🛡️ Closed By',  value: interaction.user.tag,     inline: true },
+                            { name: '📅 Closed At',  value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
+                        )],
+                    files: [new AttachmentBuilder(Buffer.from(transcript, 'utf-8'), { name: `transcript-${ticket.ticketId}.txt` })]
+                });
+
+                // Disable the action buttons on the log entry
+                const logMsg = await logCh.messages.fetch(ticket.logMessageId).catch(() => null);
+                if (logMsg?.components[0]) {
+                    const disabledRow = new ActionRowBuilder().addComponents(
+                        logMsg.components[0].components.map(b => ButtonBuilder.from(b).setDisabled(true))
+                    );
+                    await logMsg.edit({ components: [disabledRow] }).catch(() => {});
+                }
+            }
+
+            // Clean up ticket records
+            const key = `${gid}_${ticket.userId}`;
+            if (ticket.type === 'report') delete tickets.activeReports[key];
+            else                          delete tickets.activeAppeals[key];
+            delete tickets.channels[channelId];
+            saveTickets();
+
+            await interaction.reply({ content: '🔒 Ticket closed. Deleting channel in 5 seconds...', ephemeral: true });
+            setTimeout(() => ticketCh.delete().catch(() => {}), 5_000);
+        }
+
     } catch (err) {
-        console.error('Verify setup interaction error:', err);
+        console.error('Interaction error:', err);
+        if (!interaction.replied && !interaction.deferred) {
+            interaction.reply({ content: '❌ An error occurred. Please try again.', ephemeral: true }).catch(() => {});
+        }
     }
 });
 
@@ -534,6 +1065,68 @@ client.on('messageCreate', async (message) => {
         prefixes[message.guild.id] = newPrefix;
         fs.writeFileSync('./prefixes.json', JSON.stringify(prefixes, null, 4));
         return message.reply(`✅ Prefix changed to \`${newPrefix}\``);
+    }
+
+    // ── !reportsetup ──────────────────────────────────────────────────────────
+    if (command === 'reportsetup') {
+        if (!message.member.permissions.has('ManageGuild')) {
+            return message.reply('❌ You need the **Manage Server** permission to run report setup.');
+        }
+
+        reportSetupState.set(message.guild.id, { authorId: message.author.id });
+        setTimeout(() => {
+            const s = reportSetupState.get(message.guild.id);
+            if (s && s.authorId === message.author.id) reportSetupState.delete(message.guild.id);
+        }, 300_000);
+
+        return message.reply({
+            embeds: [new EmbedBuilder().setColor(0xe74c3c).setTitle('🚨 Report Setup — Step 1 of 3')
+                .setDescription(
+                    'Welcome to the **Report System Setup Wizard!**\n\n' +
+                    'Select the **category** where report ticket channels will be created.'
+                )
+                .addFields(
+                    { name: '📋 What we\'ll configure', value: '**Step 1 —** Reports category\n**Step 2 —** Reports log channel\n**Step 3 —** Moderator role', inline: false }
+                )
+                .setFooter({ text: 'Only you can interact with this setup  •  Expires in 5 minutes' })],
+            components: [new ActionRowBuilder().addComponents(
+                new ChannelSelectMenuBuilder()
+                    .setCustomId(`rs_cat_${message.guild.id}`)
+                    .setPlaceholder('Select the reports category...')
+                    .setChannelTypes(ChannelType.GuildCategory)
+            )]
+        });
+    }
+
+    // ── !appealsetup ──────────────────────────────────────────────────────────
+    if (command === 'appealsetup') {
+        if (!message.member.permissions.has('ManageGuild')) {
+            return message.reply('❌ You need the **Manage Server** permission to run appeal setup.');
+        }
+
+        appealSetupState.set(message.guild.id, { authorId: message.author.id });
+        setTimeout(() => {
+            const s = appealSetupState.get(message.guild.id);
+            if (s && s.authorId === message.author.id) appealSetupState.delete(message.guild.id);
+        }, 300_000);
+
+        return message.reply({
+            embeds: [new EmbedBuilder().setColor(0x3498db).setTitle('📩 Appeal Setup — Step 1 of 3')
+                .setDescription(
+                    'Welcome to the **Appeal System Setup Wizard!**\n\n' +
+                    'Select the **category** where appeal ticket channels will be created.'
+                )
+                .addFields(
+                    { name: '📋 What we\'ll configure', value: '**Step 1 —** Appeals category\n**Step 2 —** Appeals log channel\n**Step 3 —** Moderator role', inline: false }
+                )
+                .setFooter({ text: 'Only you can interact with this setup  •  Expires in 5 minutes' })],
+            components: [new ActionRowBuilder().addComponents(
+                new ChannelSelectMenuBuilder()
+                    .setCustomId(`as_cat_${message.guild.id}`)
+                    .setPlaceholder('Select the appeals category...')
+                    .setChannelTypes(ChannelType.GuildCategory)
+            )]
+        });
     }
 
     // ── !verifysetup ──────────────────────────────────────────────────────────
