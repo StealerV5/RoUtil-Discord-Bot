@@ -9,6 +9,18 @@ const {
 const express = require('express');
 const fs = require('fs');
 
+// ── Staff management systems ──────────────────────────────────────────────────
+const modSystem    = require('./systems/moderation');
+const cfgSystem    = require('./systems/config');
+const profileSys   = require('./systems/staffProfile');
+const loaSys       = require('./systems/loa');
+const promoSys     = require('./systems/promotions');
+const trainSys     = require('./systems/training');
+const feedbackSys  = require('./systems/feedback');
+const activitySys  = require('./systems/activity');
+const deptSys      = require('./systems/departments');
+const analyticsSys = require('./systems/analytics');
+
 // 1. Web server for 24/7 uptime
 const app = express();
 
@@ -97,12 +109,53 @@ const COMMANDS = [
     { name: '!userinfo [@user]',               desc: 'Show Discord info about a member (or yourself).' },
     { name: '!avatar [@user]',                 desc: 'Show a user\'s full-size Discord avatar.' },
     { name: '!cmds [page]',                    desc: 'Show this commands list. 10 commands per page.' },
+    // ── Staff Management System ───────────────────────────────────────────────
+    { name: '!setupmod',                       desc: 'Configure moderator, HR, and management roles + Roblox Group ID. Admin only.' },
+    { name: '!setuplogs',                      desc: 'Configure log channels for moderation, promotions, appeals, training, feedback, and LOA. Admin only.' },
+    { name: '!setupranks',                     desc: 'Map Roblox rank IDs to Discord roles. Admin only.' },
+    { name: '!setupdepartments',               desc: 'Configure department role assignments. Admin only.' },
+    { name: '!setuproles',                     desc: 'Configure HR and management roles. Admin only.' },
+    { name: '!warn @user <reason>',            desc: 'Issue a formal warning to a staff member. Creates a case with case number.' },
+    { name: '!strike @user <reason>',          desc: 'Issue a strike. Auto-escalates at 2 (suspension), 3 (demotion), 5 (termination review).' },
+    { name: '!removestrike @user <reason>',    desc: 'Remove one active strike from a staff member.' },
+    { name: '!suspend @user <duration> <reason>', desc: 'Suspend a staff member. Durations: 1d, 3d, 7d, 14d, perm. Auto-expires.' },
+    { name: '!demote @user <reason>',          desc: 'Demote a staff member. Logged to case system and promotion log channel.' },
+    { name: '!terminate @user <reason>',       desc: 'Terminate a staff member. HR role required.' },
+    { name: '!ban @user <reason>',             desc: 'Ban a staff member from the server. HR role required.' },
+    { name: '!unban <userID> <reason>',        desc: 'Unban a user by ID. HR role required.' },
+    { name: '!note @user <text>',              desc: 'Add a staff note to a member\'s record. Visible in their profile.' },
+    { name: '!staffprofile [@user]',           desc: 'Display a full staff profile: cases, strikes, LOA, trainings, activity score.' },
+    { name: '!loasetup',                       desc: 'Post the Leave of Absence panel. HR or Admin only.' },
+    { name: '!loaend',                         desc: 'Manually end your own active LOA.' },
+    { name: '!promotionsetup',                 desc: 'Post the promotion request panel. Admin only.' },
+    { name: '!demotionsetup',                  desc: 'Post the demotion recommendation panel. Admin only.' },
+    { name: '!promote @user <reason>',         desc: 'Manually log a promotion. HR role required.' },
+    { name: '!checkpromotion [@user]',         desc: 'Check if a staff member meets promotion eligibility.' },
+    { name: '!trainingcreate <name>|<desc>',   desc: 'Create a new training session with a name and description.' },
+    { name: '!traininghost <TRAIN-XXXX>',      desc: 'Start hosting a training session. Posts a join button.' },
+    { name: '!trainingcomplete <id> <pass|fail> @users', desc: 'Log training results and update staff training records.' },
+    { name: '!traininglist',                   desc: 'List all training sessions and their status.' },
+    { name: '!feedbacksetup',                  desc: 'Post the staff feedback panel (positive, concern, general). Admin only.' },
+    { name: '!activity [@user]',               desc: 'View a staff member\'s activity statistics and score.' },
+    { name: '!leaderboard',                    desc: 'Show the top 15 most active staff members by score.' },
+    { name: '!addscore @user <points>',        desc: 'Manually add activity score points to a member. Admin only.' },
+    { name: '!resetactivity @user',            desc: 'Reset a member\'s activity tracking data. Admin only.' },
+    { name: '!departments',                    desc: 'Show an overview of all departments with member count and performance.' },
+    { name: '!department <name>',              desc: 'Show the dashboard for a specific department.' },
+    { name: '!deptadd <dept> @user',           desc: 'Add a staff member to a department. HR or Admin.' },
+    { name: '!deptremove <dept> @user',        desc: 'Remove a staff member from a department. HR or Admin.' },
+    { name: '!deptperformance <dept> <0-100>', desc: 'Set a department\'s performance score. HR or Admin.' },
+    { name: '!dashboard',                      desc: 'Show a real-time overview dashboard of all staff management stats.' },
+    { name: '!stats',                          desc: 'Show detailed moderation statistics: cases by type, top mods, monthly trends.' },
 ];
 
 // ── Ready ─────────────────────────────────────────────────────────────────────
 
 client.once('clientReady', () => {
     console.log(`Success! Logged in as ${client.user.tag}`);
+    // Run suspension expiry check every hour
+    modSystem.tickSuspensions(client);
+    setInterval(() => modSystem.tickSuspensions(client), 3_600_000);
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -257,6 +310,21 @@ function buildFindButtons(page, total) {
 // ── Verify Setup — interaction handler ───────────────────────────────────────
 
 client.on('interactionCreate', async (interaction) => {
+    // ── Route to staff management systems ────────────────────────────────────
+    const cid = interaction.customId || '';
+    if (cid.startsWith('mod_'))  return modSystem.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('cfg_'))  return cfgSystem.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('sp_'))   return profileSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('loa_') || cid === 'loa_create' || cid === 'loa_modal')
+                                 return loaSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('promo_') || cid === 'promo_request' || cid === 'promo_modal' ||
+        cid === 'promo_demotion' || cid === 'promo_demotion_modal')
+                                 return promoSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('train_'))return trainSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('fb_'))   return feedbackSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('act_'))  return activitySys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('dept_')) return deptSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('dash_')) return analyticsSys.handleInteraction(interaction).catch(console.error);
     if (!interaction.guild) return;
     const gid = interaction.guild.id;
 
@@ -1050,11 +1118,35 @@ async function assignVerifiedRoles(member, config) {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
+    // ── Activity tracking (fires on every message) ────────────────────────────
+    activitySys.trackMessage(message.guild.id, message.author.id);
+
     const prefix = prefixes[message.guild.id] || DEFAULT_PREFIX;
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const command = args.shift().toLowerCase();
+
+    // ── Staff management system routing ───────────────────────────────────────
+    const MOD_CMDS    = ['warn','strike','removestrike','suspend','demote','terminate','ban','unban','note'];
+    const SETUP_CMDS  = ['setupmod','setuplogs','setupranks','setupdepartments','setuproles'];
+    const PROMO_CMDS  = ['promotionsetup','demotionsetup','promote','checkpromotion'];
+    const TRAIN_CMDS  = ['trainingcreate','traininghost','trainingcomplete','traininglist'];
+    const DEPT_CMDS   = ['departments','department','deptadd','deptremove','deptperformance'];
+    const ACT_CMDS    = ['activity','leaderboard','resetactivity','addscore'];
+    const STATS_CMDS  = ['dashboard','stats'];
+
+    if (MOD_CMDS.includes(command))   return modSystem.handleCommand(message, command, args).catch(console.error);
+    if (SETUP_CMDS.includes(command)) return cfgSystem.handleCommand(message, command, args).catch(console.error);
+    if (command === 'staffprofile')   return profileSys.handleCommand(message, args).catch(console.error);
+    if (command === 'loasetup' || command === 'loaend')
+                                      return loaSys.handleCommand(message, command, args).catch(console.error);
+    if (PROMO_CMDS.includes(command)) return promoSys.handleCommand(message, command, args).catch(console.error);
+    if (TRAIN_CMDS.includes(command)) return trainSys.handleCommand(message, command, args).catch(console.error);
+    if (command === 'feedbacksetup')  return feedbackSys.handleCommand(message, args).catch(console.error);
+    if (ACT_CMDS.includes(command))   return activitySys.handleCommand(message, command, args).catch(console.error);
+    if (DEPT_CMDS.includes(command))  return deptSys.handleCommand(message, command, args).catch(console.error);
+    if (STATS_CMDS.includes(command)) return analyticsSys.handleCommand(message, command, args).catch(console.error);
 
     // ── !ping ─────────────────────────────────────────────────────────────────
     if (command === 'ping') {
