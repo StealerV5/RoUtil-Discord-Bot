@@ -9,8 +9,14 @@ const fs = require('fs');
 
 // 1. Web server for 24/7 uptime
 const app = express();
-app.get('/', (req, res) => { res.send('RoUtil is operational!'); });
-app.listen(process.env.PORT || 3000, () => { console.log('Web server loaded.'); });
+
+app.get("/", (req, res) => {
+  res.send("Bot is online!");
+});
+
+app.listen(3000, () => {
+  console.log("Web server running");
+});
 
 // 2. Initialize Bot
 const client = new Client({
