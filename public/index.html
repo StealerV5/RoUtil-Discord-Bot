@@ -9,6 +9,9 @@
 <body>
 <div id="app">
 
+  <!-- ── Sidebar overlay (mobile tap-to-close) ── -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
   <!-- ── Sidebar ── -->
   <nav id="sidebar">
     <div class="logo">
@@ -17,6 +20,8 @@
         <div class="logo-name">RoUtil</div>
         <div class="logo-sub">Staff Dashboard</div>
       </div>
+      <!-- Close button visible only on mobile -->
+      <button id="sidebar-close" onclick="closeSidebar()" aria-label="Close menu">✕</button>
     </div>
 
     <div class="guild-wrap">
@@ -43,6 +48,10 @@
   <!-- ── Main ── -->
   <div id="main">
     <header id="topbar">
+      <!-- Hamburger — visible only on mobile -->
+      <button id="hamburger" onclick="openSidebar()" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
       <h1 id="page-title">Overview</h1>
       <div class="topbar-right">
         <span id="last-refresh" class="muted">—</span>

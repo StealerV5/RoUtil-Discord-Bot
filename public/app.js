@@ -5,11 +5,15 @@ const PAGE_SIZE  = 20;
 const PAGE_TITLES = { overview: 'Overview', cases: 'Moderation', staff: 'Staff Profiles',
                       activity: 'Activity', departments: 'Departments', training: 'Training', loa: 'Leave of Absence' };
 
+/* ── Sidebar drawer (mobile) ── */
+function openSidebar()  { document.body.classList.add('sidebar-open'); }
+function closeSidebar() { document.body.classList.remove('sidebar-open'); }
+
 /* ── Init ── */
 async function init() {
-  // Wire nav
+  // Wire nav — close drawer on mobile after selection
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.addEventListener('click', () => navigate(el.dataset.page));
+    el.addEventListener('click', () => { navigate(el.dataset.page); closeSidebar(); });
   });
 
   // Load guilds
@@ -98,15 +102,15 @@ async function renderOverview() {
         <div class="section-header"><h2>📋 Recent Cases</h2><span class="muted">Last 10</span></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Case</th><th>Type</th><th>User</th><th>Reason</th><th>Date</th></tr></thead>
+            <thead><tr><th>Case</th><th>Type</th><th>User</th><th class="hide-mobile">Reason</th><th class="hide-mobile">Date</th></tr></thead>
             <tbody>
               ${d.recentCases.length ? d.recentCases.map(c => `
                 <tr onclick="showCase(${JSON.stringify(c).replace(/"/g,'&quot;')})">
                   <td><code>${esc(c.id)}</code></td>
                   <td>${typeBadge(c.type)}</td>
                   <td class="muted">${shortId(c.userId)}</td>
-                  <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.reason)}</td>
-                  <td class="muted">${relDate(c.timestamp)}</td>
+                  <td class="hide-mobile" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.reason)}</td>
+                  <td class="muted hide-mobile">${relDate(c.timestamp)}</td>
                 </tr>`).join('') : '<tr><td colspan="5" class="empty">No cases yet</td></tr>'}
             </tbody>
           </table>
@@ -191,17 +195,17 @@ async function fetchAndRenderCases() {
   body.innerHTML = `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Case ID</th><th>Type</th><th>User</th><th>Moderator</th><th>Dept</th><th>Reason</th><th>Date</th></tr></thead>
+        <thead><tr><th>Case ID</th><th>Type</th><th>User</th><th class="hide-mobile">Moderator</th><th class="hide-mobile">Dept</th><th>Reason</th><th class="hide-mobile">Date</th></tr></thead>
         <tbody>
           ${d.cases.length ? d.cases.map(c => `
             <tr onclick="showCase(${JSON.stringify(c).replace(/"/g,'&quot;')})">
               <td><code style="font-size:12px">${esc(c.id)}</code></td>
               <td>${typeBadge(c.type)}</td>
               <td class="muted">${shortId(c.userId)}</td>
-              <td class="muted">${shortId(c.moderatorId)}</td>
-              <td class="muted">${esc(c.department || 'General')}</td>
+              <td class="muted hide-mobile">${shortId(c.moderatorId)}</td>
+              <td class="muted hide-mobile">${esc(c.department || 'General')}</td>
               <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.reason)}</td>
-              <td class="muted" style="white-space:nowrap">${relDate(c.timestamp)}</td>
+              <td class="muted hide-mobile" style="white-space:nowrap">${relDate(c.timestamp)}</td>
             </tr>`).join('') : '<tr><td colspan="7" class="empty">No cases match your filters.</td></tr>'}
         </tbody>
       </table>
@@ -225,17 +229,17 @@ async function renderStaff() {
       <div class="section-header"><h2>👥 Staff Records</h2><span class="muted">${d.length} tracked members</span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>User</th><th>Status</th><th>Active Strikes</th><th>Warnings</th><th>Suspensions</th><th>Promotions</th><th>Trainings</th></tr></thead>
+          <thead><tr><th>User</th><th>Status</th><th>Strikes</th><th class="hide-mobile">Warnings</th><th class="hide-mobile">Suspensions</th><th class="hide-mobile">Promotions</th><th class="hide-mobile">Trainings</th></tr></thead>
           <tbody>
             ${d.length ? d.map(s => `
               <tr>
                 <td><code>${shortId(s.uid)}</code></td>
                 <td>${statusBadge(s)}</td>
                 <td>${s.activeStrikes > 0 ? `<span style="color:var(--orange);font-weight:700">${s.activeStrikes}</span>` : '0'}</td>
-                <td>${s.warnings}</td>
-                <td>${s.suspensions}</td>
-                <td>${s.promotions}</td>
-                <td>${s.trainings}</td>
+                <td class="hide-mobile">${s.warnings}</td>
+                <td class="hide-mobile">${s.suspensions}</td>
+                <td class="hide-mobile">${s.promotions}</td>
+                <td class="hide-mobile">${s.trainings}</td>
               </tr>`).join('') : '<tr><td colspan="7" class="empty">No staff records yet.</td></tr>'}
           </tbody>
         </table>
@@ -286,16 +290,16 @@ async function renderActivity() {
       <div class="section-header"><h2>📊 Full Activity Table</h2><span class="muted">${d.allTime.length} members</span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Rank</th><th>User</th><th>Total Messages</th><th>This Week</th><th>Score</th><th>Last Seen</th></tr></thead>
+          <thead><tr><th>Rank</th><th>User</th><th>Total Messages</th><th class="hide-mobile">This Week</th><th>Score</th><th class="hide-mobile">Last Seen</th></tr></thead>
           <tbody>
             ${d.allTime.map((r,i) => `
               <tr>
                 <td class="muted">#${i+1}</td>
                 <td><code>${shortId(r.uid)}</code></td>
                 <td>${r.messages.toLocaleString()}</td>
-                <td>${(r.weekMessages||0).toLocaleString()}</td>
+                <td class="hide-mobile">${(r.weekMessages||0).toLocaleString()}</td>
                 <td><span style="color:var(--yellow);font-weight:700">${r.score}</span></td>
-                <td class="muted">${relDate(r.lastSeen)}</td>
+                <td class="muted hide-mobile">${relDate(r.lastSeen)}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -340,18 +344,18 @@ async function renderTraining() {
       <div class="section-header"><h2>🎓 Training Sessions</h2><span class="muted">${d.length} total</span></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Instructor</th><th>Attendees</th><th>Passed</th><th>Failed</th><th>Date</th></tr></thead>
+          <thead><tr><th class="hide-mobile">ID</th><th>Name</th><th>Status</th><th class="hide-mobile">Instructor</th><th class="hide-mobile">Attendees</th><th>Passed</th><th>Failed</th><th class="hide-mobile">Date</th></tr></thead>
           <tbody>
             ${d.length ? d.map(t => `
               <tr>
-                <td><code style="font-size:12px">${esc(t.id)}</code></td>
+                <td class="hide-mobile"><code style="font-size:12px">${esc(t.id)}</code></td>
                 <td><strong>${esc(t.name)}</strong></td>
                 <td>${statusLabel('badge-'+t.status, t.status)}</td>
-                <td class="muted">${t.instructor ? shortId(t.instructor) : '—'}</td>
-                <td>${t.attendees}</td>
+                <td class="muted hide-mobile">${t.instructor ? shortId(t.instructor) : '—'}</td>
+                <td class="hide-mobile">${t.attendees}</td>
                 <td><span style="color:var(--green)">${t.passed}</span></td>
                 <td><span style="color:var(--red)">${t.failed}</span></td>
-                <td class="muted">${relDate(t.created)}</td>
+                <td class="muted hide-mobile">${relDate(t.created)}</td>
               </tr>`).join('') : '<tr><td colspan="8" class="empty">No training sessions yet.</td></tr>'}
           </tbody>
         </table>
