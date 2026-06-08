@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RoUtil — Staff Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar">
+    <div class="logo">
+      <div class="logo-icon">🤖</div>
+      <div>
+        <div class="logo-name">RoUtil</div>
+        <div class="logo-sub">Staff Dashboard</div>
+      </div>
+    </div>
+
+    <div class="guild-wrap">
+      <label class="guild-label">Server</label>
+      <select id="guild-sel"><option value="">Loading...</option></select>
+    </div>
+
+    <ul class="nav">
+      <li class="nav-item active" data-page="overview">   <span>📊</span> Overview</li>
+      <li class="nav-item"        data-page="cases">      <span>⚖️</span> Moderation</li>
+      <li class="nav-item"        data-page="staff">      <span>👥</span> Staff</li>
+      <li class="nav-item"        data-page="activity">   <span>📈</span> Activity</li>
+      <li class="nav-item"        data-page="departments"><span>🏢</span> Departments</li>
+      <li class="nav-item"        data-page="training">   <span>🎓</span> Training</li>
+      <li class="nav-item"        data-page="loa">        <span>🌴</span> LOA</li>
+    </ul>
+
+    <div class="bot-status" id="bot-status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Connecting…</span>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <div id="main">
+    <header id="topbar">
+      <h1 id="page-title">Overview</h1>
+      <div class="topbar-right">
+        <span id="last-refresh" class="muted">—</span>
+        <button id="refresh-btn" onclick="loadPage()">↻ Refresh</button>
+      </div>
+    </header>
+
+    <div id="content">
+      <div class="loader-wrap"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Case Modal ── -->
+<div id="modal-overlay" class="hidden">
+  <div id="modal">
+    <button id="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

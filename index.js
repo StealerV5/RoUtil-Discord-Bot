@@ -7,7 +7,9 @@ const {
     ModalBuilder, TextInputBuilder, TextInputStyle
 } = require('discord.js');
 const express = require('express');
-const fs = require('fs');
+const fs   = require('fs');
+const path = require('path');
+const { load: dbLoad } = require('./db');
 
 // ── Staff management systems ──────────────────────────────────────────────────
 const modSystem    = require('./systems/moderation');
@@ -21,15 +23,166 @@ const activitySys  = require('./systems/activity');
 const deptSys      = require('./systems/departments');
 const analyticsSys = require('./systems/analytics');
 
-// 1. Web server for 24/7 uptime
+// ── Web server + Dashboard API ────────────────────────────────────────────────
 const app = express();
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.get("/", (req, res) => {
-  res.send("Bot is online!");
+// ── /api/status ───────────────────────────────────────────────────────────────
+app.get('/api/status', (_req, res) => {
+    try {
+        res.json({ online: client.isReady(), tag: client.user?.tag || '', guilds: client.guilds?.cache.size || 0 });
+    } catch { res.json({ online: false }); }
+});
+
+// ── /api/guilds ───────────────────────────────────────────────────────────────
+app.get('/api/guilds', (_req, res) => {
+    try {
+        const guilds = [...client.guilds.cache.values()].map(g => ({ id: g.id, name: g.name, icon: g.iconURL() }));
+        res.json(guilds);
+    } catch { res.json([]); }
+});
+
+// ── /api/overview ─────────────────────────────────────────────────────────────
+app.get('/api/overview', (req, res) => {
+    const gid     = req.query.guild;
+    const cases   = dbLoad('cases',     {})[gid]?.list   || [];
+    const staffDb = dbLoad('staffData', {})[gid]          || {};
+    const actDb   = dbLoad('activity',  {})[gid]          || {};
+    const deptDb  = dbLoad('departments', {})[gid]        || {};
+    const loaDb   = dbLoad('loa',       {})[gid]          || {};
+
+    const allStaff = Object.entries(staffDb);
+    const topAct   = Object.entries(actDb)
+        .map(([uid, r]) => ({ uid, ...r }))
+        .sort((a, b) => b.score - a.score).slice(0, 5);
+
+    const depts = Object.entries(deptDb).map(([name, d]) => ({
+        name, members: (d.members || []).length, performance: d.performance || 0
+    }));
+
+    const DEPT_DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
+    const deptResult = DEPT_DEFAULTS.map(name => {
+        const d = deptDb[name] || { members: [], performance: 0 };
+        return { name, members: (d.members || []).length, performance: d.performance || 0 };
+    });
+
+    res.json({
+        totalCases:       cases.length,
+        warnings:         cases.filter(c => c.type === 'warn').length,
+        strikes:          cases.filter(c => c.type === 'strike').length,
+        activeStrikes:    allStaff.reduce((s, [, r]) => s + (r.activeStrikes || 0), 0),
+        suspensions:      cases.filter(c => c.type === 'suspend').length,
+        activeSuspensions:allStaff.filter(([, r]) => r.isSuspended).length,
+        activeStaff:      allStaff.filter(([, r]) => !r.isSuspended && !r.isTerminated && !r.isBanned).length,
+        totalTracked:     allStaff.length,
+        onLOA:            allStaff.filter(([, r]) => r.isLOA).length,
+        recentCases:      cases.slice(-10).reverse(),
+        topActivity:      topAct,
+        departments:      deptResult,
+    });
+});
+
+// ── /api/cases ────────────────────────────────────────────────────────────────
+app.get('/api/cases', (req, res) => {
+    const gid    = req.query.guild;
+    const type   = req.query.type   || 'all';
+    const search = (req.query.search || '').toLowerCase();
+    const pageN  = parseInt(req.query.page) || 0;
+
+    let list = dbLoad('cases', {})[gid]?.list || [];
+    if (type !== 'all') list = list.filter(c => c.type === type);
+    if (search)         list = list.filter(c =>
+        c.reason?.toLowerCase().includes(search) ||
+        c.id?.toLowerCase().includes(search) ||
+        c.userId?.includes(search)
+    );
+    const total  = list.length;
+    const paged  = [...list].reverse().slice(pageN * 20, (pageN + 1) * 20);
+    res.json({ cases: paged, total });
+});
+
+// ── /api/staff ────────────────────────────────────────────────────────────────
+app.get('/api/staff', (req, res) => {
+    const gid    = req.query.guild;
+    const staffDb = dbLoad('staffData', {})[gid] || {};
+    const caseDb  = dbLoad('cases',     {})[gid]?.list || [];
+
+    const result = Object.entries(staffDb).map(([uid, r]) => ({
+        uid,
+        isTerminated: r.isTerminated || false,
+        isBanned:     r.isBanned     || false,
+        isSuspended:  r.isSuspended  || false,
+        isLOA:        r.isLOA        || false,
+        activeStrikes:r.activeStrikes || 0,
+        warnings:     caseDb.filter(c => c.userId === uid && c.type === 'warn').length,
+        suspensions:  caseDb.filter(c => c.userId === uid && c.type === 'suspend').length,
+        promotions:   (r.promotions || []).length,
+        trainings:    (r.trainings  || []).length,
+    }));
+
+    res.json(result);
+});
+
+// ── /api/activity ─────────────────────────────────────────────────────────────
+app.get('/api/activity', (req, res) => {
+    const gid    = req.query.guild;
+    const actDb  = dbLoad('activity', {})[gid] || {};
+
+    const all    = Object.entries(actDb).map(([uid, r]) => ({ uid, ...r }));
+    const allTime = [...all].sort((a, b) => b.score - a.score).slice(0, 50);
+    const weekly  = [...all].sort((a, b) => (b.weekMessages || 0) - (a.weekMessages || 0)).slice(0, 20);
+    res.json({ allTime, weekly });
+});
+
+// ── /api/departments ──────────────────────────────────────────────────────────
+app.get('/api/departments', (req, res) => {
+    const gid    = req.query.guild;
+    const deptDb = dbLoad('departments', {})[gid] || {};
+    const DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
+
+    const result = DEFAULTS.map(name => {
+        const d = deptDb[name] || { members: [], performance: 0, notes: '' };
+        return { name, members: (d.members || []).length, memberList: d.members || [], performance: d.performance || 0, notes: d.notes || '' };
+    });
+    res.json(result);
+});
+
+// ── /api/training ─────────────────────────────────────────────────────────────
+app.get('/api/training', (req, res) => {
+    const gid      = req.query.guild;
+    const trainDb  = dbLoad('trainings', {})[gid]?.sessions || [];
+    const result   = [...trainDb].reverse().map(t => ({
+        id:         t.id,
+        name:       t.name,
+        status:     t.status,
+        instructor: t.instructor,
+        attendees:  (t.attendees || []).length,
+        passed:     (t.passed   || []).length,
+        failed:     (t.failed   || []).length,
+        created:    t.created,
+    }));
+    res.json(result);
+});
+
+// ── /api/loa ──────────────────────────────────────────────────────────────────
+app.get('/api/loa', (req, res) => {
+    const gid   = req.query.guild;
+    const loaDb = dbLoad('loa', {})[gid] || {};
+    const result = [];
+
+    for (const [uid, rec] of Object.entries(loaDb)) {
+        if (rec.active) {
+            result.push({ uid, active: true, reason: rec.reason, startDate: rec.startDate, endDate: rec.endDate });
+        }
+        for (const h of (rec.history || [])) {
+            result.push({ uid, active: false, reason: h.reason, startDate: h.startDate, endDate: h.endDate, approved: h.approved });
+        }
+    }
+    res.json(result);
 });
 
 app.listen(3000, () => {
-  console.log("Web server running");
+    console.log('Web server running on port 3000');
 });
 
 // 2. Initialize Bot
