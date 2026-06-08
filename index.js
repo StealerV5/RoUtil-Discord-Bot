@@ -553,15 +553,15 @@ client.on('interactionCreate', async (interaction) => {
                         .setDescription('Select the **Moderator Role** that can manage and action reports.')
                         .setFooter({ text: 'Step 3 of 3 • Final step!' })],
                     components: [new ActionRowBuilder().addComponents(
-                        new RoleSelectMenuBuilder().setCustomId(`rs_mod_${gid}`).setPlaceholder('Select moderator role...')
+                        new RoleSelectMenuBuilder().setCustomId(`rs_mod_${gid}`).setPlaceholder('Select moderator role(s)...').setMinValues(1).setMaxValues(10)
                     )]
                 });
             }
 
-            // Step 3 → mod role chosen, save config + send panel
+            // Step 3 → mod role(s) chosen, save config + send panel
             if (interaction.customId === `rs_mod_${gid}`) {
-                state.modRoleId = interaction.values[0];
-                reportConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleId: state.modRoleId };
+                state.modRoleIds = interaction.values;
+                reportConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleIds: state.modRoleIds };
                 saveReportConfig();
                 reportSetupState.delete(gid);
 
@@ -569,9 +569,9 @@ client.on('interactionCreate', async (interaction) => {
                     embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Report Setup Complete!')
                         .setDescription('The report panel has been posted. Use `!reportsetup` to reconfigure.')
                         .addFields(
-                            { name: '📁 Category',    value: `<#${state.categoryId}>`,   inline: true },
-                            { name: '📋 Log Channel', value: `<#${state.logChannelId}>`, inline: true },
-                            { name: '🛡️ Mod Role',   value: `<@&${state.modRoleId}>`,   inline: true }
+                            { name: '📁 Category',     value: `<#${state.categoryId}>`,                                       inline: true  },
+                            { name: '📋 Log Channel',  value: `<#${state.logChannelId}>`,                                     inline: true  },
+                            { name: '🛡️ Mod Roles',   value: state.modRoleIds.map(id => `<@&${id}>`).join('\n'), inline: false }
                         )],
                     components: []
                 });
@@ -623,14 +623,14 @@ client.on('interactionCreate', async (interaction) => {
                         .setDescription('Select the **Moderator Role** that can manage and action appeals.')
                         .setFooter({ text: 'Step 3 of 3 • Final step!' })],
                     components: [new ActionRowBuilder().addComponents(
-                        new RoleSelectMenuBuilder().setCustomId(`as_mod_${gid}`).setPlaceholder('Select moderator role...')
+                        new RoleSelectMenuBuilder().setCustomId(`as_mod_${gid}`).setPlaceholder('Select moderator role(s)...').setMinValues(1).setMaxValues(10)
                     )]
                 });
             }
 
             if (interaction.customId === `as_mod_${gid}`) {
-                state.modRoleId = interaction.values[0];
-                appealConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleId: state.modRoleId };
+                state.modRoleIds = interaction.values;
+                appealConfig[gid] = { categoryId: state.categoryId, logChannelId: state.logChannelId, modRoleIds: state.modRoleIds };
                 saveAppealConfig();
                 appealSetupState.delete(gid);
 
@@ -638,9 +638,9 @@ client.on('interactionCreate', async (interaction) => {
                     embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Appeal Setup Complete!')
                         .setDescription('The appeal panel has been posted. Use `!appealsetup` to reconfigure.')
                         .addFields(
-                            { name: '📁 Category',    value: `<#${state.categoryId}>`,   inline: true },
-                            { name: '📋 Log Channel', value: `<#${state.logChannelId}>`, inline: true },
-                            { name: '🛡️ Mod Role',   value: `<@&${state.modRoleId}>`,   inline: true }
+                            { name: '📁 Category',    value: `<#${state.categoryId}>`,                                        inline: true  },
+                            { name: '📋 Log Channel', value: `<#${state.logChannelId}>`,                                      inline: true  },
+                            { name: '🛡️ Mod Roles',  value: state.modRoleIds.map(id => `<@&${id}>`).join('\n'), inline: false }
                         )],
                     components: []
                 });
@@ -700,10 +700,12 @@ client.on('interactionCreate', async (interaction) => {
                 type: ChannelType.GuildText,
                 parent: cfg.categoryId,
                 permissionOverwrites: [
-                    { id: interaction.guild.id,          deny:  [PermissionFlagsBits.ViewChannel] },
-                    { id: interaction.user.id,           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: cfg.modRoleId,                 allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: interaction.client.user.id,    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
+                    { id: interaction.guild.id,       deny:  [PermissionFlagsBits.ViewChannel] },
+                    { id: interaction.user.id,        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] },
+                    ...(cfg.modRoleIds ?? (cfg.modRoleId ? [cfg.modRoleId] : [])).map(id => ({
+                        id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+                    }))
                 ]
             });
 
@@ -800,10 +802,12 @@ client.on('interactionCreate', async (interaction) => {
                 type: ChannelType.GuildText,
                 parent: cfg.categoryId,
                 permissionOverwrites: [
-                    { id: interaction.guild.id,          deny:  [PermissionFlagsBits.ViewChannel] },
-                    { id: interaction.user.id,           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: cfg.modRoleId,                 allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-                    { id: interaction.client.user.id,    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] }
+                    { id: interaction.guild.id,       deny:  [PermissionFlagsBits.ViewChannel] },
+                    { id: interaction.user.id,        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+                    { id: interaction.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] },
+                    ...(cfg.modRoleIds ?? (cfg.modRoleId ? [cfg.modRoleId] : [])).map(id => ({
+                        id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+                    }))
                 ]
             });
 
@@ -885,8 +889,9 @@ client.on('interactionCreate', async (interaction) => {
             const ticket = tickets.channels[channelId];
             if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
             const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
-            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
-                return interaction.reply({ content: '❌ You need the moderator role to action tickets.', ephemeral: true });
+            const modIds1 = cfg?.modRoleIds ?? (cfg?.modRoleId ? [cfg.modRoleId] : []);
+            if (!cfg || !modIds1.some(id => interaction.member.roles.cache.has(id)))
+                return interaction.reply({ content: '❌ You need a moderator role to action tickets.', ephemeral: true });
 
             const newStatus = ticket.type === 'report' ? '🟡 Under Investigation' : '🟢 Accepted';
             ticket.status   = ticket.type === 'report' ? 'under_investigation' : 'accepted';
@@ -924,8 +929,9 @@ client.on('interactionCreate', async (interaction) => {
             const ticket    = tickets.channels[channelId];
             if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
             const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
-            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
-                return interaction.reply({ content: '❌ You need the moderator role to action tickets.', ephemeral: true });
+            const modIds2 = cfg?.modRoleIds ?? (cfg?.modRoleId ? [cfg.modRoleId] : []);
+            if (!cfg || !modIds2.some(id => interaction.member.roles.cache.has(id)))
+                return interaction.reply({ content: '❌ You need a moderator role to action tickets.', ephemeral: true });
 
             ticket.status = 'rejected';
             saveTickets();
@@ -957,8 +963,9 @@ client.on('interactionCreate', async (interaction) => {
             const ticket    = tickets.channels[channelId];
             if (!ticket) return interaction.reply({ content: '❌ Ticket data not found.', ephemeral: true });
             const cfg = ticket.type === 'report' ? reportConfig[gid] : appealConfig[gid];
-            if (!cfg || !interaction.member.roles.cache.has(cfg.modRoleId))
-                return interaction.reply({ content: '❌ You need the moderator role to close tickets.', ephemeral: true });
+            const modIds3 = cfg?.modRoleIds ?? (cfg?.modRoleId ? [cfg.modRoleId] : []);
+            if (!cfg || !modIds3.some(id => interaction.member.roles.cache.has(id)))
+                return interaction.reply({ content: '❌ You need a moderator role to close tickets.', ephemeral: true });
 
             const ticketCh = interaction.guild.channels.cache.get(channelId);
             if (!ticketCh) return interaction.reply({ content: '❌ Channel not found.', ephemeral: true });

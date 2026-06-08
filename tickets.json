@@ -1,0 +1,25 @@
+{
+    "channels": {
+        "1513590555903393923": {
+            "type": "report",
+            "guildId": "1490361207079702758",
+            "userId": "1273260996793995355",
+            "ticketId": "R-0001",
+            "logMessageId": "1513590632495448294",
+            "logChannelId": "1490657376301486141",
+            "status": "pending",
+            "answers": [
+                "6767",
+                "Hajjkh",
+                "67",
+                "Nond"
+            ]
+        }
+    },
+    "activeReports": {
+        "1490361207079702758_1273260996793995355": "1513590555903393923"
+    },
+    "activeAppeals": {},
+    "nextReportId": 2,
+    "nextAppealId": 1
+}
