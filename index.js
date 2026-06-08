@@ -49,6 +49,11 @@ const COMMANDS = [
     { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
     { name: '!verifysetup',                    desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
     { name: '!verify',                         desc: 'Link your Roblox account to this server via bio code or gamepass check.' },
+    { name: '!whois @user',                    desc: 'Look up the Roblox account linked to a Discord user.' },
+    { name: '!verified',                       desc: 'Show how many members have verified their Roblox account.' },
+    { name: '!serverstats',                    desc: 'Show member, channel, and role counts for this server.' },
+    { name: '!userinfo [@user]',               desc: 'Show Discord info about a member (or yourself).' },
+    { name: '!avatar [@user]',                 desc: 'Show a user\'s full-size Discord avatar.' },
     { name: '!cmds [page]',                    desc: 'Show this commands list. 10 commands per page.' },
 ];
 
@@ -632,6 +637,9 @@ client.on('messageCreate', async (message) => {
 
                     if (gpData.data?.length > 0) {
                         await assignVerifiedRoles(message.member, config);
+                        verifyConfig.links = verifyConfig.links || {};
+                        verifyConfig.links[message.author.id] = { robloxName: robloxUser.name, robloxId: robloxUser.id };
+                        saveVerifyConfig();
                         await checking.edit(`✅ Verified! **${robloxUser.name}** owns the gamepass — you've been given the verified role.`);
                     } else {
                         await checking.edit(`❌ **${robloxUser.name}** does not own the required gamepass (ID: \`${config.gamepasId}\`).`);
@@ -690,6 +698,9 @@ client.on('messageCreate', async (message) => {
 
                 if (profile.description?.includes(code)) {
                     await assignVerifiedRoles(message.member, config);
+                    verifyConfig.links = verifyConfig.links || {};
+                    verifyConfig.links[message.author.id] = { robloxName: robloxUser.name, robloxId: robloxUser.id };
+                    saveVerifyConfig();
                     await bioMsg.edit({
                         embeds: [
                             new EmbedBuilder()
@@ -734,6 +745,92 @@ client.on('messageCreate', async (message) => {
         });
 
         return;
+    }
+
+    // ── !whois ────────────────────────────────────────────────────────────────
+    if (command === 'whois') {
+        const user = message.mentions.users.first();
+        if (!user) return message.reply('❌ Mention a user. Example: `!whois @someone`');
+
+        const data = verifyConfig.links?.[user.id];
+        if (!data) return message.reply(`❌ **${user.tag}** has not verified their Roblox account in this server.`);
+
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x5865f2)
+                    .setTitle('🔍 Roblox Link')
+                    .addFields(
+                        { name: '💬 Discord',      value: user.tag,                     inline: true },
+                        { name: '🎮 Roblox Name',  value: data.robloxName,              inline: true },
+                        { name: '🆔 Roblox ID',    value: `\`${data.robloxId}\``,       inline: true }
+                    )
+                    .setThumbnail(user.displayAvatarURL())
+            ]
+        });
+    }
+
+    // ── !verified ─────────────────────────────────────────────────────────────
+    if (command === 'verified') {
+        const count = verifyConfig.links ? Object.keys(verifyConfig.links).length : 0;
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x57f287)
+                    .setTitle('✅ Verified Members')
+                    .setDescription(`**${count}** member${count !== 1 ? 's have' : ' has'} verified their Roblox account in this server.`)
+            ]
+        });
+    }
+
+    // ── !serverstats ──────────────────────────────────────────────────────────
+    if (command === 'serverstats') {
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x00ae86)
+                    .setTitle('📊 Server Statistics')
+                    .setThumbnail(message.guild.iconURL())
+                    .addFields(
+                        { name: '👥 Members',  value: `${message.guild.memberCount}`,              inline: true },
+                        { name: '💬 Channels', value: `${message.guild.channels.cache.size}`,      inline: true },
+                        { name: '🏷️ Roles',   value: `${message.guild.roles.cache.size}`,         inline: true }
+                    )
+                    .setFooter({ text: message.guild.name })
+            ]
+        });
+    }
+
+    // ── !userinfo ─────────────────────────────────────────────────────────────
+    if (command === 'userinfo') {
+        const member = message.mentions.members.first() || message.member;
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x5865f2)
+                    .setTitle('👤 User Information')
+                    .setThumbnail(member.user.displayAvatarURL())
+                    .addFields(
+                        { name: 'Username',      value: member.user.tag,                                                 inline: true  },
+                        { name: 'User ID',       value: `\`${member.id}\``,                                              inline: true  },
+                        { name: 'Joined Server', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:F>`,            inline: false },
+                        { name: 'Account Created', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:F>`,   inline: false }
+                    )
+            ]
+        });
+    }
+
+    // ── !avatar ───────────────────────────────────────────────────────────────
+    if (command === 'avatar') {
+        const user = message.mentions.users.first() || message.author;
+        return message.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setColor(0x5865f2)
+                    .setTitle(`🖼️ ${user.username}'s Avatar`)
+                    .setImage(user.displayAvatarURL({ size: 1024 }))
+            ]
+        });
     }
 
     // ── !cmds ─────────────────────────────────────────────────────────────────
