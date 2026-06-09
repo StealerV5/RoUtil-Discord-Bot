@@ -287,61 +287,74 @@ const verifySetupState  = new Map();
 const reportSetupState  = new Map();
 const appealSetupState  = new Map();
 
-// ── Commands list (update this array every time a new command is added) ───────
-const COMMANDS = [
+// ── Commands list ─────────────────────────────────────────────────────────────
+const MEMBER_CMDS = [
+    { name: '!cmds',                           desc: 'Show this commands list with Member and Staff sections.' },
     { name: '!ping',                           desc: 'Check if the bot is online.' },
     { name: '!setprefix <new>',                desc: 'Change the command prefix for this server. Requires **Manage Server**.' },
     { name: '!find [user|item] <query>',       desc: 'Search Roblox for users or marketplace items.' },
     { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
-    { name: '!reportsetup',                    desc: 'Set up the player report ticket system. Requires **Manage Server**.' },
-    { name: '!appealsetup',                    desc: 'Set up the ban appeal ticket system. Requires **Manage Server**.' },
-    { name: '!verifysetup',                    desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
     { name: '!verify',                         desc: 'Link your Roblox account to this server via bio code or gamepass check.' },
     { name: '!whois @user',                    desc: 'Look up the Roblox account linked to a Discord user.' },
     { name: '!verified',                       desc: 'Show how many members have verified their Roblox account.' },
     { name: '!serverstats',                    desc: 'Show member, channel, and role counts for this server.' },
     { name: '!userinfo [@user]',               desc: 'Show Discord info about a member (or yourself).' },
     { name: '!avatar [@user]',                 desc: 'Show a user\'s full-size Discord avatar.' },
-    { name: '!cmds [page]',                    desc: 'Show this commands list. 10 commands per page.' },
-    // ── Staff Management System ───────────────────────────────────────────────
-    { name: '!setupmod',                       desc: 'Configure moderator, HR, and management roles + Roblox Group ID. Admin only.' },
-    { name: '!setuplogs',                      desc: 'Configure log channels for moderation, promotions, appeals, training, feedback, and LOA. Admin only.' },
-    { name: '!setupranks',                     desc: 'Map Roblox rank IDs to Discord roles. Admin only.' },
-    { name: '!setupdepartments',               desc: 'Configure department role assignments. Admin only.' },
-    { name: '!setuproles',                     desc: 'Configure HR and management roles. Admin only.' },
-    { name: '!warn @user <reason>',            desc: 'Issue a formal warning to a staff member. Creates a case with case number.' },
-    { name: '!strike @user <reason>',          desc: 'Issue a strike. Auto-escalates at 2 (suspension), 3 (demotion), 5 (termination review).' },
-    { name: '!removestrike @user <reason>',    desc: 'Remove one active strike from a staff member.' },
-    { name: '!suspend @user <duration> <reason>', desc: 'Suspend a staff member. Durations: 1d, 3d, 7d, 14d, perm. Auto-expires.' },
-    { name: '!demote @user <reason>',          desc: 'Demote a staff member. Logged to case system and promotion log channel.' },
-    { name: '!terminate @user <reason>',       desc: 'Terminate a staff member. HR role required.' },
-    { name: '!ban @user <reason>',             desc: 'Ban a staff member from the server. HR role required.' },
-    { name: '!unban <userID> <reason>',        desc: 'Unban a user by ID. HR role required.' },
-    { name: '!note @user <text>',              desc: 'Add a staff note to a member\'s record. Visible in their profile.' },
-    { name: '!staffprofile [@user]',           desc: 'Display a full staff profile: cases, strikes, LOA, trainings, activity score.' },
-    { name: '!loasetup',                       desc: 'Post the Leave of Absence panel. HR or Admin only.' },
-    { name: '!loaend',                         desc: 'Manually end your own active LOA.' },
-    { name: '!promotionsetup',                 desc: 'Post the promotion request panel. Admin only.' },
-    { name: '!demotionsetup',                  desc: 'Post the demotion recommendation panel. Admin only.' },
-    { name: '!promote @user <reason>',         desc: 'Manually log a promotion. HR role required.' },
-    { name: '!checkpromotion [@user]',         desc: 'Check if a staff member meets promotion eligibility.' },
-    { name: '!trainingcreate <name>|<desc>',   desc: 'Create a new training session with a name and description.' },
-    { name: '!traininghost <TRAIN-XXXX>',      desc: 'Start hosting a training session. Posts a join button.' },
-    { name: '!trainingcomplete <id> <pass|fail> @users', desc: 'Log training results and update staff training records.' },
-    { name: '!traininglist',                   desc: 'List all training sessions and their status.' },
-    { name: '!feedbacksetup',                  desc: 'Post the staff feedback panel (positive, concern, general). Admin only.' },
-    { name: '!activity [@user]',               desc: 'View a staff member\'s activity statistics and score.' },
-    { name: '!leaderboard',                    desc: 'Show the top 15 most active staff members by score.' },
-    { name: '!addscore @user <points>',        desc: 'Manually add activity score points to a member. Admin only.' },
-    { name: '!resetactivity @user',            desc: 'Reset a member\'s activity tracking data. Admin only.' },
-    { name: '!departments',                    desc: 'Show an overview of all departments with member count and performance.' },
-    { name: '!department <name>',              desc: 'Show the dashboard for a specific department.' },
-    { name: '!deptadd <dept> @user',           desc: 'Add a staff member to a department. HR or Admin.' },
-    { name: '!deptremove <dept> @user',        desc: 'Remove a staff member from a department. HR or Admin.' },
-    { name: '!deptperformance <dept> <0-100>', desc: 'Set a department\'s performance score. HR or Admin.' },
-    { name: '!dashboard',                      desc: 'Show a real-time overview dashboard of all staff management stats.' },
-    { name: '!stats',                          desc: 'Show detailed moderation statistics: cases by type, top mods, monthly trends.' },
 ];
+
+const STAFF_CMDS = [
+    // ── Setup ─────────────────────────────────────────────────────────────────
+    { name: '!setupmod',                          desc: 'Configure moderator, HR, and management roles + Roblox Group ID. Admin only.' },
+    { name: '!setuplogs',                         desc: 'Configure log channels for moderation, promotions, appeals, training, feedback, and LOA. Admin only.' },
+    { name: '!setupranks',                        desc: 'Map Roblox rank IDs to Discord roles. Admin only.' },
+    { name: '!setupdepartments',                  desc: 'Configure department role assignments. Admin only.' },
+    { name: '!setuproles',                        desc: 'Configure HR and management roles. Admin only.' },
+    { name: '!reportsetup',                       desc: 'Set up the player report ticket system. Requires **Manage Server**.' },
+    { name: '!appealsetup',                       desc: 'Set up the ban appeal ticket system. Requires **Manage Server**.' },
+    { name: '!verifysetup',                       desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
+    // ── Moderation ────────────────────────────────────────────────────────────
+    { name: '!warn @user <reason>',               desc: 'Issue a formal warning to a staff member. Creates a case with case number.' },
+    { name: '!strike @user <reason>',             desc: 'Issue a strike. Auto-escalates at 2 (suspension), 3 (demotion), 5 (termination review).' },
+    { name: '!removestrike @user <reason>',       desc: 'Remove one active strike from a staff member.' },
+    { name: '!suspend @user <duration> <reason>', desc: 'Suspend a staff member. Durations: 1d, 3d, 7d, 14d, perm. Auto-expires.' },
+    { name: '!demote @user <reason>',             desc: 'Demote a staff member. Logged to case system and promotion log channel.' },
+    { name: '!terminate @user <reason>',          desc: 'Terminate a staff member. HR role required.' },
+    { name: '!ban @user <reason>',                desc: 'Ban a staff member from the server. HR role required.' },
+    { name: '!unban <userID> <reason>',           desc: 'Unban a user by ID. HR role required.' },
+    { name: '!note @user <text>',                 desc: 'Add a staff note to a member\'s record. Visible in their profile.' },
+    // ── Profiles & LOA ────────────────────────────────────────────────────────
+    { name: '!staffprofile [@user]',              desc: 'Display a full staff profile: cases, strikes, LOA, trainings, activity score.' },
+    { name: '!loasetup',                          desc: 'Post the Leave of Absence panel. HR or Admin only.' },
+    { name: '!loaend',                            desc: 'Manually end your own active LOA.' },
+    // ── Promotions ────────────────────────────────────────────────────────────
+    { name: '!promotionsetup',                    desc: 'Post the promotion request panel. Admin only.' },
+    { name: '!demotionsetup',                     desc: 'Post the demotion recommendation panel. Admin only.' },
+    { name: '!promote @user <reason>',            desc: 'Manually log a promotion. HR role required.' },
+    { name: '!checkpromotion [@user]',            desc: 'Check if a staff member meets promotion eligibility.' },
+    // ── Training ──────────────────────────────────────────────────────────────
+    { name: '!trainingcreate <name>|<desc>',      desc: 'Create a new training session with a name and description.' },
+    { name: '!traininghost <TRAIN-XXXX>',         desc: 'Start hosting a training session. Posts a join button.' },
+    { name: '!trainingcomplete <id> <pass|fail> @users', desc: 'Log training results and update staff training records.' },
+    { name: '!traininglist',                      desc: 'List all training sessions and their status.' },
+    { name: '!feedbacksetup',                     desc: 'Post the staff feedback panel (positive, concern, general). Admin only.' },
+    // ── Activity ──────────────────────────────────────────────────────────────
+    { name: '!activity [@user]',                  desc: 'View a staff member\'s activity statistics and score.' },
+    { name: '!leaderboard',                       desc: 'Show the top 15 most active staff members by score.' },
+    { name: '!addscore @user <points>',           desc: 'Manually add activity score points to a member. Admin only.' },
+    { name: '!resetactivity @user',               desc: 'Reset a member\'s activity tracking data. Admin only.' },
+    // ── Departments ───────────────────────────────────────────────────────────
+    { name: '!departments',                       desc: 'Show an overview of all departments with member count and performance.' },
+    { name: '!department <name>',                 desc: 'Show the dashboard for a specific department.' },
+    { name: '!deptadd <dept> @user',              desc: 'Add a staff member to a department. HR or Admin.' },
+    { name: '!deptremove <dept> @user',           desc: 'Remove a staff member from a department. HR or Admin.' },
+    { name: '!deptperformance <dept> <0-100>',    desc: 'Set a department\'s performance score. HR or Admin.' },
+    // ── Analytics ─────────────────────────────────────────────────────────────
+    { name: '!dashboard',                         desc: 'Show a real-time overview dashboard of all staff management stats.' },
+    { name: '!stats',                             desc: 'Show detailed moderation statistics: cases by type, top mods, monthly trends.' },
+];
+
+// Keep a combined list for any code that still references COMMANDS
+const COMMANDS = [...MEMBER_CMDS, ...STAFF_CMDS];
 
 // ── Ready ─────────────────────────────────────────────────────────────────────
 
@@ -1727,31 +1740,54 @@ client.on('messageCreate', async (message) => {
 
     // ── !cmds ─────────────────────────────────────────────────────────────────
     if (command === 'cmds') {
-        const PAGE_SIZE  = 10;
-        const totalPages = Math.ceil(COMMANDS.length / PAGE_SIZE);
-        let page = Math.max(1, Math.min(parseInt(args[0]) || 1, totalPages));
+        const PAGE_SIZE = 8;
+        let tab  = 'member'; // 'member' | 'staff'
+        let page = 1;
 
-        const buildCmdsEmbed = (p) => {
-            const slice = COMMANDS.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
+        const tabList = () => tab === 'member' ? MEMBER_CMDS : STAFF_CMDS;
+
+        const buildEmbed = () => {
+            const list       = tabList();
+            const totalPages = Math.ceil(list.length / PAGE_SIZE);
+            const slice      = list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+            const isStaff    = tab === 'staff';
             return new EmbedBuilder()
-                .setColor(0x5865f2)
-                .setTitle('📖 RoUtil — Commands')
+                .setColor(isStaff ? 0xed4245 : 0x5865f2)
+                .setTitle(isStaff ? '🛡️ RoUtil — Staff Commands' : '👤 RoUtil — Member Commands')
                 .setDescription(slice.map(c => `**${c.name}**\n${c.desc}`).join('\n\n'))
-                .setFooter({ text: `Page ${p} of ${totalPages}  •  ${COMMANDS.length} commands total` });
+                .setFooter({ text: `Page ${page} of ${totalPages}  •  ${list.length} commands in this section` });
         };
 
-        const buildCmdsButtons = (p) => new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(p === 1),
-            new ButtonBuilder().setCustomId('cmds_page').setLabel(`${p} / ${totalPages}`).setStyle(ButtonStyle.Primary).setDisabled(true),
-            new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(p === totalPages)
-        );
+        const buildRows = () => {
+            const list       = tabList();
+            const totalPages = Math.ceil(list.length / PAGE_SIZE);
 
-        const cmdsMsg = await message.reply({
-            embeds: [buildCmdsEmbed(page)],
-            components: totalPages > 1 ? [buildCmdsButtons(page)] : []
-        });
+            // Row 1 — section tabs
+            const tabRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('cmds_tab_member')
+                    .setLabel('👤 Members')
+                    .setStyle(tab === 'member' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+                    .setDisabled(tab === 'member'),
+                new ButtonBuilder()
+                    .setCustomId('cmds_tab_staff')
+                    .setLabel('🛡️ Staff')
+                    .setStyle(tab === 'staff' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                    .setDisabled(tab === 'staff')
+            );
 
-        if (totalPages <= 1) return;
+            // Row 2 — page nav (only shown when multiple pages)
+            if (totalPages <= 1) return [tabRow];
+
+            const pageRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+                new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages)
+            );
+            return [tabRow, pageRow];
+        };
+
+        const cmdsMsg = await message.reply({ embeds: [buildEmbed()], components: buildRows() });
 
         const collector = cmdsMsg.createMessageComponentCollector({
             filter: i => i.user.id === message.author.id,
@@ -1759,18 +1795,30 @@ client.on('messageCreate', async (message) => {
         });
 
         collector.on('collect', async (interaction) => {
-            if (interaction.customId === 'cmds_prev' && page > 1) page--;
-            if (interaction.customId === 'cmds_next' && page < totalPages) page++;
-            await interaction.update({ embeds: [buildCmdsEmbed(page)], components: [buildCmdsButtons(page)] });
+            if (interaction.customId === 'cmds_tab_member') { tab = 'member'; page = 1; }
+            if (interaction.customId === 'cmds_tab_staff')  { tab = 'staff';  page = 1; }
+            if (interaction.customId === 'cmds_prev') page--;
+            if (interaction.customId === 'cmds_next') page++;
+            await interaction.update({ embeds: [buildEmbed()], components: buildRows() });
         });
 
         collector.on('end', () => {
-            const disabled = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Primary).setDisabled(true),
-                new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(true)
+            const list       = tabList();
+            const totalPages = Math.ceil(list.length / PAGE_SIZE);
+            const disabledRows = [
+                new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('cmds_tab_member').setLabel('👤 Members').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                    new ButtonBuilder().setCustomId('cmds_tab_staff').setLabel('🛡️ Staff').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                )
+            ];
+            if (totalPages > 1) disabledRows.push(
+                new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                    new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+                    new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(true)
+                )
             );
-            cmdsMsg.edit({ components: [disabled] }).catch(() => {});
+            cmdsMsg.edit({ components: disabledRows }).catch(() => {});
         });
 
         return;
