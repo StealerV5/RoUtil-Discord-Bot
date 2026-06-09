@@ -44,146 +44,187 @@ app.get('/api/guilds', (_req, res) => {
 
 // ── /api/overview ─────────────────────────────────────────────────────────────
 app.get('/api/overview', (req, res) => {
-    const gid     = req.query.guild;
-    const cases   = dbLoad('cases',     {})[gid]?.list   || [];
-    const staffDb = dbLoad('staffData', {})[gid]          || {};
-    const actDb   = dbLoad('activity',  {})[gid]          || {};
-    const deptDb  = dbLoad('departments', {})[gid]        || {};
-    const loaDb   = dbLoad('loa',       {})[gid]          || {};
+    try {
+        const gid     = req.query.guild;
+        const cases   = dbLoad('cases',       {})[gid]?.list || [];
+        const staffDb = dbLoad('staffData',   {})[gid]       || {};
+        const actDb   = dbLoad('activity',    {})[gid]       || {};
+        const deptDb  = dbLoad('departments', {})[gid]       || {};
 
-    const allStaff = Object.entries(staffDb);
-    const topAct   = Object.entries(actDb)
-        .map(([uid, r]) => ({ uid, ...r }))
-        .sort((a, b) => b.score - a.score).slice(0, 5);
+        const allStaff = Object.entries(staffDb);
+        const topAct   = Object.entries(actDb)
+            .map(([uid, r]) => ({ uid, ...r }))
+            .sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 5);
 
-    const depts = Object.entries(deptDb).map(([name, d]) => ({
-        name, members: (d.members || []).length, performance: d.performance || 0
-    }));
+        const DEPT_DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
+        const deptResult = DEPT_DEFAULTS.map(name => {
+            const d = deptDb[name] || {};
+            return { name, members: (d.members || []).length, performance: d.performance || 0 };
+        });
 
-    const DEPT_DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
-    const deptResult = DEPT_DEFAULTS.map(name => {
-        const d = deptDb[name] || { members: [], performance: 0 };
-        return { name, members: (d.members || []).length, performance: d.performance || 0 };
-    });
-
-    res.json({
-        totalCases:       cases.length,
-        warnings:         cases.filter(c => c.type === 'warn').length,
-        strikes:          cases.filter(c => c.type === 'strike').length,
-        activeStrikes:    allStaff.reduce((s, [, r]) => s + (r.activeStrikes || 0), 0),
-        suspensions:      cases.filter(c => c.type === 'suspend').length,
-        activeSuspensions:allStaff.filter(([, r]) => r.isSuspended).length,
-        activeStaff:      allStaff.filter(([, r]) => !r.isSuspended && !r.isTerminated && !r.isBanned).length,
-        totalTracked:     allStaff.length,
-        onLOA:            allStaff.filter(([, r]) => r.isLOA).length,
-        recentCases:      cases.slice(-10).reverse(),
-        topActivity:      topAct,
-        departments:      deptResult,
-    });
+        res.json({
+            totalCases:        cases.length,
+            warnings:          cases.filter(c => c.type === 'warn').length,
+            strikes:           cases.filter(c => c.type === 'strike').length,
+            activeStrikes:     allStaff.reduce((s, [, r]) => s + (r.activeStrikes || 0), 0),
+            suspensions:       cases.filter(c => c.type === 'suspend').length,
+            activeSuspensions: allStaff.filter(([, r]) => r.isSuspended).length,
+            activeStaff:       allStaff.filter(([, r]) => !r.isSuspended && !r.isTerminated && !r.isBanned).length,
+            totalTracked:      allStaff.length,
+            onLOA:             allStaff.filter(([, r]) => r.isLOA).length,
+            recentCases:       cases.slice(-10).reverse(),
+            topActivity:       topAct,
+            departments:       deptResult,
+        });
+    } catch (e) {
+        console.error('[API /overview]', e.message);
+        res.status(500).json({ error: 'Failed to load overview' });
+    }
 });
 
 // ── /api/cases ────────────────────────────────────────────────────────────────
 app.get('/api/cases', (req, res) => {
-    const gid    = req.query.guild;
-    const type   = req.query.type   || 'all';
-    const search = (req.query.search || '').toLowerCase();
-    const pageN  = parseInt(req.query.page) || 0;
+    try {
+        const gid    = req.query.guild;
+        const type   = req.query.type   || 'all';
+        const search = (req.query.search || '').toLowerCase();
+        const pageN  = Math.max(0, parseInt(req.query.page) || 0);
 
-    let list = dbLoad('cases', {})[gid]?.list || [];
-    if (type !== 'all') list = list.filter(c => c.type === type);
-    if (search)         list = list.filter(c =>
-        c.reason?.toLowerCase().includes(search) ||
-        c.id?.toLowerCase().includes(search) ||
-        c.userId?.includes(search)
-    );
-    const total  = list.length;
-    const paged  = [...list].reverse().slice(pageN * 20, (pageN + 1) * 20);
-    res.json({ cases: paged, total });
+        let list = dbLoad('cases', {})[gid]?.list || [];
+        if (type !== 'all') list = list.filter(c => c.type === type);
+        if (search)         list = list.filter(c =>
+            c.reason?.toLowerCase().includes(search) ||
+            c.id?.toLowerCase().includes(search) ||
+            c.userId?.includes(search)
+        );
+        const total = list.length;
+        const paged = [...list].reverse().slice(pageN * 20, (pageN + 1) * 20);
+        res.json({ cases: paged, total });
+    } catch (e) {
+        console.error('[API /cases]', e.message);
+        res.status(500).json({ error: 'Failed to load cases', cases: [], total: 0 });
+    }
 });
 
 // ── /api/staff ────────────────────────────────────────────────────────────────
 app.get('/api/staff', (req, res) => {
-    const gid    = req.query.guild;
-    const staffDb = dbLoad('staffData', {})[gid] || {};
-    const caseDb  = dbLoad('cases',     {})[gid]?.list || [];
+    try {
+        const gid     = req.query.guild;
+        const staffDb = dbLoad('staffData', {})[gid] || {};
+        const caseDb  = dbLoad('cases',     {})[gid]?.list || [];
 
-    const result = Object.entries(staffDb).map(([uid, r]) => ({
-        uid,
-        isTerminated: r.isTerminated || false,
-        isBanned:     r.isBanned     || false,
-        isSuspended:  r.isSuspended  || false,
-        isLOA:        r.isLOA        || false,
-        activeStrikes:r.activeStrikes || 0,
-        warnings:     caseDb.filter(c => c.userId === uid && c.type === 'warn').length,
-        suspensions:  caseDb.filter(c => c.userId === uid && c.type === 'suspend').length,
-        promotions:   (r.promotions || []).length,
-        trainings:    (r.trainings  || []).length,
-    }));
-
-    res.json(result);
+        const result = Object.entries(staffDb).map(([uid, r]) => ({
+            uid,
+            isTerminated:  r.isTerminated  || false,
+            isBanned:      r.isBanned      || false,
+            isSuspended:   r.isSuspended   || false,
+            isLOA:         r.isLOA         || false,
+            activeStrikes: r.activeStrikes || 0,
+            warnings:    caseDb.filter(c => c.userId === uid && c.type === 'warn').length,
+            suspensions: caseDb.filter(c => c.userId === uid && c.type === 'suspend').length,
+            promotions:  (r.promotions || []).length,
+            trainings:   (r.trainings  || []).length,
+        }));
+        res.json(result);
+    } catch (e) {
+        console.error('[API /staff]', e.message);
+        res.status(500).json([]);
+    }
 });
 
 // ── /api/activity ─────────────────────────────────────────────────────────────
 app.get('/api/activity', (req, res) => {
-    const gid    = req.query.guild;
-    const actDb  = dbLoad('activity', {})[gid] || {};
+    try {
+        const gid    = req.query.guild;
+        const actDb  = dbLoad('activity', {})[gid] || {};
 
-    const all    = Object.entries(actDb).map(([uid, r]) => ({ uid, ...r }));
-    const allTime = [...all].sort((a, b) => b.score - a.score).slice(0, 50);
-    const weekly  = [...all].sort((a, b) => (b.weekMessages || 0) - (a.weekMessages || 0)).slice(0, 20);
-    res.json({ allTime, weekly });
+        const all     = Object.entries(actDb).map(([uid, r]) => ({ uid, ...r }));
+        const allTime = [...all].sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 50);
+        const weekly  = [...all].sort((a, b) => (b.weekMessages || 0) - (a.weekMessages || 0)).slice(0, 20);
+        res.json({ allTime, weekly });
+    } catch (e) {
+        console.error('[API /activity]', e.message);
+        res.status(500).json({ allTime: [], weekly: [] });
+    }
 });
 
 // ── /api/departments ──────────────────────────────────────────────────────────
 app.get('/api/departments', (req, res) => {
-    const gid    = req.query.guild;
-    const deptDb = dbLoad('departments', {})[gid] || {};
-    const DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
+    try {
+        const gid    = req.query.guild;
+        const deptDb = dbLoad('departments', {})[gid] || {};
+        const DEFAULTS = ['Administration','Moderation','Human Resources','Internal Affairs','Development','Security'];
 
-    const result = DEFAULTS.map(name => {
-        const d = deptDb[name] || { members: [], performance: 0, notes: '' };
-        return { name, members: (d.members || []).length, memberList: d.members || [], performance: d.performance || 0, notes: d.notes || '' };
-    });
-    res.json(result);
+        const result = DEFAULTS.map(name => {
+            const d = deptDb[name] || {};
+            return { name, members: (d.members || []).length, memberList: d.members || [], performance: d.performance || 0, notes: d.notes || '' };
+        });
+        res.json(result);
+    } catch (e) {
+        console.error('[API /departments]', e.message);
+        res.status(500).json([]);
+    }
 });
 
 // ── /api/training ─────────────────────────────────────────────────────────────
 app.get('/api/training', (req, res) => {
-    const gid      = req.query.guild;
-    const trainDb  = dbLoad('trainings', {})[gid]?.sessions || [];
-    const result   = [...trainDb].reverse().map(t => ({
-        id:         t.id,
-        name:       t.name,
-        status:     t.status,
-        instructor: t.instructor,
-        attendees:  (t.attendees || []).length,
-        passed:     (t.passed   || []).length,
-        failed:     (t.failed   || []).length,
-        created:    t.created,
-    }));
-    res.json(result);
+    try {
+        const gid     = req.query.guild;
+        const trainDb = dbLoad('trainings', {})[gid]?.sessions || [];
+
+        const result = [...trainDb].reverse().map(t => ({
+            id:         t.id,
+            name:       t.name,
+            status:     t.status,
+            instructor: t.instructor,
+            attendees:  (t.attendees || []).length,
+            passed:     (t.passed   || []).length,
+            failed:     (t.failed   || []).length,
+            created:    t.created,
+        }));
+        res.json(result);
+    } catch (e) {
+        console.error('[API /training]', e.message);
+        res.status(500).json([]);
+    }
 });
 
 // ── /api/loa ──────────────────────────────────────────────────────────────────
 app.get('/api/loa', (req, res) => {
-    const gid   = req.query.guild;
-    const loaDb = dbLoad('loa', {})[gid] || {};
-    const result = [];
+    try {
+        const gid    = req.query.guild;
+        const loaDb  = dbLoad('loa', {})[gid] || {};
+        const result = [];
 
-    for (const [uid, rec] of Object.entries(loaDb)) {
-        if (rec.active) {
-            result.push({ uid, active: true, reason: rec.reason, startDate: rec.startDate, endDate: rec.endDate });
+        for (const [uid, rec] of Object.entries(loaDb)) {
+            if (!rec || typeof rec !== 'object') continue;
+            if (rec.active) {
+                result.push({ uid, active: true, reason: rec.reason, startDate: rec.startDate, endDate: rec.endDate });
+            }
+            for (const h of (rec.history || [])) {
+                result.push({ uid, active: false, reason: h.reason, startDate: h.startDate, endDate: h.endDate, approved: h.approved });
+            }
         }
-        for (const h of (rec.history || [])) {
-            result.push({ uid, active: false, reason: h.reason, startDate: h.startDate, endDate: h.endDate, approved: h.approved });
-        }
+        res.json(result);
+    } catch (e) {
+        console.error('[API /loa]', e.message);
+        res.status(500).json([]);
     }
-    res.json(result);
+});
+
+// ── Global Express error handler ──────────────────────────────────────────────
+app.use((err, _req, res, _next) => {
+    console.error('[Express error]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(3000, () => {
     console.log('Web server running on port 3000');
 });
+
+// ── Keep the process alive on unexpected errors ────────────────────────────────
+process.on('uncaughtException',  err => console.error('[Uncaught Exception]', err));
+process.on('unhandledRejection', err => console.error('[Unhandled Rejection]', err));
 
 // 2. Initialize Bot
 const client = new Client({
