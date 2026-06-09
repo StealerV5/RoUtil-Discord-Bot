@@ -289,68 +289,628 @@ const appealSetupState  = new Map();
 
 // ── Commands list ─────────────────────────────────────────────────────────────
 const MEMBER_CMDS = [
-    { name: '!cmds',                           desc: 'Show this commands list with Member and Staff sections.' },
-    { name: '!ping',                           desc: 'Check if the bot is online.' },
-    { name: '!setprefix <new>',                desc: 'Change the command prefix for this server. Requires **Manage Server**.' },
-    { name: '!find [user|item] <query>',       desc: 'Search Roblox for users or marketplace items.' },
-    { name: '!find item <query> by <creator>', desc: 'Search marketplace items filtered by a specific creator.' },
-    { name: '!verify',                         desc: 'Link your Roblox account to this server via bio code or gamepass check.' },
-    { name: '!whois @user',                    desc: 'Look up the Roblox account linked to a Discord user.' },
-    { name: '!verified',                       desc: 'Show how many members have verified their Roblox account.' },
-    { name: '!serverstats',                    desc: 'Show member, channel, and role counts for this server.' },
-    { name: '!userinfo [@user]',               desc: 'Show Discord info about a member (or yourself).' },
-    { name: '!avatar [@user]',                 desc: 'Show a user\'s full-size Discord avatar.' },
+    // ── General ───────────────────────────────────────────────────────────────
+    { name: '!cmds',                                desc: 'View all member commands, paginated.' },
+    { name: '!staffcmds',                           desc: 'View all staff commands (staff only).' },
+    { name: '!ping',                                desc: 'Check if the bot is online and view latency.' },
+    { name: '!botinfo',                             desc: 'Show bot version, uptime, and server count.' },
+    { name: '!uptime',                              desc: 'Show how long the bot has been running.' },
+    { name: '!setprefix <new>',                     desc: 'Change the command prefix. Requires Manage Server.' },
+    { name: '!prefix',                              desc: 'Show the current command prefix for this server.' },
+    { name: '!invite',                              desc: 'Get a link to invite RoUtil to your server.' },
+    // ── Roblox Lookup ─────────────────────────────────────────────────────────
+    { name: '!find user <name>',                    desc: 'Search for a Roblox user by username.' },
+    { name: '!find item <query>',                   desc: 'Search the Roblox catalog for items.' },
+    { name: '!find item <query> by <creator>',      desc: 'Search catalog items filtered by creator name.' },
+    { name: '!find game <query>',                   desc: 'Search for Roblox games by name.' },
+    { name: '!find group <query>',                  desc: 'Search for Roblox groups by name.' },
+    { name: '!roblox <username>',                   desc: 'View detailed profile stats for a Roblox user.' },
+    { name: '!gameinfo <placeId>',                  desc: 'View info and stats about a specific Roblox game.' },
+    { name: '!groupinfo <groupId>',                 desc: 'View details about a Roblox group.' },
+    { name: '!groupwall <groupId>',                 desc: 'View recent wall posts for a Roblox group.' },
+    { name: '!groupranks <groupId>',                desc: 'List all ranks inside a Roblox group.' },
+    { name: '!groupmembers <groupId>',              desc: 'View member count and breakdown for a Roblox group.' },
+    { name: '!catalogitem <itemId>',                desc: 'Get detailed info on a specific catalog item.' },
+    { name: '!limiteds',                            desc: 'Browse popular Roblox limited items.' },
+    { name: '!newlimiteds',                         desc: 'Show the most recently released limited items.' },
+    { name: '!topgames',                            desc: 'Show the top trending Roblox games right now.' },
+    { name: '!newgames',                            desc: 'Show newly released Roblox games.' },
+    { name: '!featuredgames',                       desc: 'Show currently featured Roblox games.' },
+    { name: '!gamesearch <query>',                  desc: 'Search all public Roblox games.' },
+    { name: '!badgeinfo <badgeId>',                 desc: 'Get info on a specific Roblox badge.' },
+    { name: '!assetinfo <assetId>',                 desc: 'View info about any Roblox asset.' },
+    // ── Verification ──────────────────────────────────────────────────────────
+    { name: '!verify',                              desc: 'Link your Roblox account via bio code or gamepass.' },
+    { name: '!whois @user',                         desc: 'Look up the Roblox account linked to a Discord member.' },
+    { name: '!verified',                            desc: 'Show how many members have verified in this server.' },
+    { name: '!myverify',                            desc: 'Show your currently linked Roblox account.' },
+    { name: '!unverify',                            desc: 'Unlink your Roblox account from Discord.' },
+    { name: '!reverify',                            desc: 'Re-link to a different Roblox account.' },
+    { name: '!verifyinfo',                          desc: 'Explain how the verification system works.' },
+    { name: '!verifycheck @user',                   desc: 'Check whether a member is verified.' },
+    // ── Profile & Customization ───────────────────────────────────────────────
+    { name: '!profile [@user]',                     desc: 'View a member\'s profile card.' },
+    { name: '!setbio <text>',                       desc: 'Set your personal profile bio.' },
+    { name: '!mybio',                               desc: 'View your current profile bio.' },
+    { name: '!setpronoun <pronouns>',               desc: 'Set your preferred pronouns shown on your profile.' },
+    { name: '!mypronoun',                           desc: 'View the pronouns set on your profile.' },
+    { name: '!settimezone <tz>',                    desc: 'Set your timezone for the server (e.g. America/New_York).' },
+    { name: '!timezone [@user]',                    desc: 'Show your or another member\'s set timezone.' },
+    { name: '!avatar [@user]',                      desc: 'Show a user\'s full-size Discord avatar.' },
+    { name: '!banner [@user]',                      desc: 'Show a user\'s Discord banner image.' },
+    { name: '!userinfo [@user]',                    desc: 'Show Discord account info for a member.' },
+    { name: '!setcolor <hex>',                      desc: 'Set your personal color role by hex code.' },
+    { name: '!resetcolor',                          desc: 'Remove your current color role.' },
+    { name: '!mycolor',                             desc: 'Show your currently active color role.' },
+    { name: '!colors',                              desc: 'View all available color roles you can pick.' },
+    // ── Server Info ───────────────────────────────────────────────────────────
+    { name: '!serverstats',                         desc: 'Show member, channel, and role counts for this server.' },
+    { name: '!membercount',                         desc: 'Quick total member count.' },
+    { name: '!roleinfo <role>',                     desc: 'Show info about a specific role.' },
+    { name: '!channelinfo [#channel]',              desc: 'Show info about a channel.' },
+    { name: '!servericon',                          desc: 'Show the full server icon image.' },
+    { name: '!serverbanner',                        desc: 'Show the server banner image.' },
+    { name: '!serverinfo',                          desc: 'Detailed server info (ID, owner, features, etc.).' },
+    { name: '!emojis',                              desc: 'List all custom emojis in this server.' },
+    { name: '!stickers',                            desc: 'List all custom stickers in this server.' },
+    { name: '!boosts',                              desc: 'Show the server\'s current boost level and count.' },
+    { name: '!roles',                               desc: 'List all roles in the server.' },
+    { name: '!stafflist',                           desc: 'View the public staff directory.' },
+    // ── My Records ────────────────────────────────────────────────────────────
+    { name: '!myrecord',                            desc: 'View your full moderation record.' },
+    { name: '!mywarnings',                          desc: 'View all warnings on your record.' },
+    { name: '!mystrikes',                           desc: 'View your active strikes.' },
+    { name: '!mycase <case-id>',                    desc: 'Look up a specific case by its ID.' },
+    { name: '!mysuspensions',                       desc: 'View your suspension history.' },
+    { name: '!mynotes',                             desc: 'View staff notes attached to your record.' },
+    { name: '!appealstatus',                        desc: 'Check the status of your active appeal.' },
+    { name: '!myrep',                               desc: 'View your current reputation score.' },
+    { name: '!mypoints',                            desc: 'Check your current points balance.' },
+    { name: '!myquota',                             desc: 'Check your current activity quota progress.' },
+    // ── Applications ──────────────────────────────────────────────────────────
+    { name: '!apply',                               desc: 'Apply for a staff position (opens a form).' },
+    { name: '!applicationstatus',                   desc: 'Check the status of your application.' },
+    { name: '!withdrawapplication',                 desc: 'Withdraw your pending application.' },
+    { name: '!applicationinfo',                     desc: 'Learn about the staff application process.' },
+    { name: '!applicationrequirements',             desc: 'View the requirements to submit an application.' },
+    { name: '!applicationfaq',                      desc: 'Frequently asked application questions.' },
+    { name: '!applicationhistory',                  desc: 'View your past application submissions.' },
+    { name: '!openpositions',                       desc: 'View currently open staff positions.' },
+    // ── Training ──────────────────────────────────────────────────────────────
+    { name: '!mytrainings',                         desc: 'View your training history and pass/fail record.' },
+    { name: '!trainingschedule',                    desc: 'See all upcoming training sessions.' },
+    { name: '!nextraining',                         desc: 'Show the next scheduled training session.' },
+    { name: '!traininginfo <id>',                   desc: 'Get details about a specific training session.' },
+    { name: '!trainingresults <id>',                desc: 'View the results from a training session.' },
+    { name: '!trainingteam',                        desc: 'See who is on the training team.' },
+    { name: '!trainingleaderboard',                 desc: 'Top members by trainings completed.' },
+    { name: '!trainingfaq',                         desc: 'Frequently asked training questions.' },
+    // ── LOA ───────────────────────────────────────────────────────────────────
+    { name: '!loastatus',                           desc: 'Check your current leave of absence status.' },
+    { name: '!myactiveloa',                         desc: 'Show your active LOA details and end date.' },
+    { name: '!loahistory',                          desc: 'View your past leave of absence records.' },
+    { name: '!loainfo',                             desc: 'Learn how the LOA system works.' },
+    { name: '!loalist',                             desc: 'View all members currently on LOA.' },
+    { name: '!loarequest',                          desc: 'Request a leave of absence (opens a form).' },
+    // ── Department Info ───────────────────────────────────────────────────────
+    { name: '!deptinfo <name>',                     desc: 'View info and details about a department.' },
+    { name: '!mydepartment',                        desc: 'See which departments you\'re a member of.' },
+    { name: '!deptmembers <name>',                  desc: 'View all members of a specific department.' },
+    { name: '!deptlead <name>',                     desc: 'See who leads a department.' },
+    { name: '!deptlist',                            desc: 'List all departments and their member counts.' },
+    { name: '!deptperformance <name>',              desc: 'View a department\'s current performance score.' },
+    { name: '!deptleaderboard',                     desc: 'Rankings of departments by performance score.' },
+    { name: '!applydept <name>',                    desc: 'Apply to join a department.' },
+    // ── Promotions & Rank ─────────────────────────────────────────────────────
+    { name: '!rankinfo <rank>',                     desc: 'View info and perks for a specific rank.' },
+    { name: '!promotioninfo',                       desc: 'Learn about the promotion and demotion system.' },
+    { name: '!myrankstatus',                        desc: 'Check your current promotion eligibility.' },
+    { name: '!promotionrequirements',               desc: 'View requirements needed for your next rank.' },
+    { name: '!promotionhistory',                    desc: 'View your personal promotion/demotion history.' },
+    { name: '!rankleaderboard',                     desc: 'Members ranked by their current position.' },
+    { name: '!checkeligibility',                    desc: 'Run a full promotion eligibility check on yourself.' },
+    { name: '!quotainfo',                           desc: 'View quota requirements for your rank.' },
+    { name: '!quotaprogress',                       desc: 'See how far along you are to meeting quota.' },
+    { name: '!rankchangelog',                       desc: 'View recent changes to the rank structure.' },
+    // ── Events ────────────────────────────────────────────────────────────────
+    { name: '!events',                              desc: 'List all upcoming events.' },
+    { name: '!eventinfo <id>',                      desc: 'Get full details about a specific event.' },
+    { name: '!nextevent',                           desc: 'Show the next scheduled event and countdown.' },
+    { name: '!rsvp <id>',                           desc: 'RSVP to an upcoming event.' },
+    { name: '!unrsvp <id>',                         desc: 'Cancel your RSVP for an event.' },
+    { name: '!myrsvp',                              desc: 'Show all events you have RSVPed to.' },
+    { name: '!pastedevents',                        desc: 'View a history of past completed events.' },
+    { name: '!eventcalendar',                       desc: 'Show the monthly event calendar.' },
+    { name: '!eventleaderboard',                    desc: 'Top members by total event attendance.' },
+    { name: '!eventannouncement',                   desc: 'View the latest event announcement.' },
+    // ── Points & XP ───────────────────────────────────────────────────────────
+    { name: '!points [@user]',                      desc: 'Check your or another member\'s points balance.' },
+    { name: '!pointsleaderboard',                   desc: 'Top members by points balance.' },
+    { name: '!pointshistory',                       desc: 'View your points earning and spending history.' },
+    { name: '!giftpoints @user <amount>',           desc: 'Gift some of your points to another member.' },
+    { name: '!level [@user]',                       desc: 'Show your current XP level.' },
+    { name: '!rank [@user]',                        desc: 'View your full rank card with XP progress.' },
+    { name: '!xp [@user]',                          desc: 'Check your current XP and progress to next level.' },
+    { name: '!levelboard',                          desc: 'Top members by XP level.' },
+    { name: '!levelrewards',                        desc: 'View rewards unlocked at each XP level.' },
+    { name: '!nextlevel',                           desc: 'Show how much XP you need for the next level.' },
+    { name: '!xprate',                              desc: 'View the current XP earn rate per message.' },
+    { name: '!activity [@user]',                    desc: 'View activity statistics and score for a member.' },
+    // ── Social ────────────────────────────────────────────────────────────────
+    { name: '!kudos @user <reason>',                desc: 'Give kudos to a member for something great.' },
+    { name: '!topkudos',                            desc: 'Members with the most kudos received.' },
+    { name: '!mykudos',                             desc: 'View kudos you have received from others.' },
+    { name: '!rep @user',                           desc: 'Give reputation to a member (once per day).' },
+    { name: '!toprep',                              desc: 'Members with the highest reputation score.' },
+    { name: '!greet @user',                         desc: 'Send a friendly greeting to a member.' },
+    { name: '!congrats @user',                      desc: 'Send congratulations to a member.' },
+    { name: '!thank @user',                         desc: 'Express thanks to a member publicly.' },
+    { name: '!welcome @user',                       desc: 'Welcome a new member to the server.' },
+    { name: '!afk <reason>',                        desc: 'Set yourself as AFK with an optional reason.' },
+    // ── Fun & Utility ─────────────────────────────────────────────────────────
+    { name: '!coinflip',                            desc: 'Flip a coin — Heads or Tails.' },
+    { name: '!dice [sides]',                        desc: 'Roll a dice. Default is 6 sides.' },
+    { name: '!8ball <question>',                    desc: 'Ask the magic 8-ball a question.' },
+    { name: '!choose <a|b|c>',                      desc: 'Let the bot randomly pick from your options.' },
+    { name: '!random <min> <max>',                  desc: 'Generate a random number in a range.' },
+    { name: '!time',                                desc: 'Show the current UTC time.' },
+    { name: '!timestamp <date>',                    desc: 'Generate a Discord-formatted timestamp.' },
+    { name: '!worldtime <city>',                    desc: 'Show the current time in a given city.' },
+    { name: '!convert <amount> <from> <to>',        desc: 'Convert between units (e.g. km to miles).' },
+    { name: '!percentage <value> <total>',          desc: 'Calculate a percentage.' },
+    { name: '!calculate <expression>',              desc: 'Evaluate a math expression.' },
+    { name: '!qrcode <text>',                       desc: 'Generate a QR code image for any text.' },
+    { name: '!encode <text>',                       desc: 'Base64-encode a string.' },
+    { name: '!decode <text>',                       desc: 'Base64-decode a string.' },
+    { name: '!color <hex>',                         desc: 'Preview a hex color and get its RGB values.' },
+    { name: '!shorten <url>',                       desc: 'Shorten a long URL.' },
+    { name: '!charcount <text>',                    desc: 'Count characters and words in a string.' },
+    { name: '!reverse <text>',                      desc: 'Reverse a string of text.' },
+    // ── Polls & Voting ────────────────────────────────────────────────────────
+    { name: '!poll <q>|<opt1>|<opt2>',              desc: 'Create a multi-option vote.' },
+    { name: '!vote <poll-id> <option>',             desc: 'Cast your vote on an active poll.' },
+    { name: '!polls',                               desc: 'View all currently active polls.' },
+    { name: '!pollresults <id>',                    desc: 'View the current results of a poll.' },
+    { name: '!mypoll',                              desc: 'View polls you have created.' },
+    { name: '!pollhistory',                         desc: 'View past polls and their final results.' },
+    { name: '!endpoll <id>',                        desc: 'End your own poll early and display results.' },
+    { name: '!activepoll',                          desc: 'Show the most recently started active poll.' },
+    // ── Suggestions ───────────────────────────────────────────────────────────
+    { name: '!suggest <text>',                      desc: 'Submit a suggestion to the staff team.' },
+    { name: '!suggestions',                         desc: 'View open suggestions and their vote counts.' },
+    { name: '!mysuggestions',                       desc: 'View suggestions you have submitted.' },
+    { name: '!voteon <id>',                         desc: 'Upvote or downvote a suggestion.' },
+    { name: '!suggestionstatus <id>',               desc: 'Check the current status of a suggestion.' },
+    { name: '!topsuggestions',                      desc: 'View the most upvoted suggestions.' },
+    // ── Giveaways ─────────────────────────────────────────────────────────────
+    { name: '!giveaways',                           desc: 'List all currently active giveaways.' },
+    { name: '!joingiveaway <id>',                   desc: 'Enter an active giveaway.' },
+    { name: '!mygiveaways',                         desc: 'See giveaways you have entered.' },
+    { name: '!giveawayinfo <id>',                   desc: 'Get full details on a specific giveaway.' },
+    { name: '!pastgiveaways',                       desc: 'View ended giveaways and their winners.' },
+    { name: '!giveawaywinners <id>',                desc: 'See who won a specific giveaway.' },
+    { name: '!giveawaycount',                       desc: 'How many giveaways you have won in total.' },
+    { name: '!giveawaynotify',                      desc: 'Toggle giveaway ping notifications for yourself.' },
+    // ── Tags ──────────────────────────────────────────────────────────────────
+    { name: '!tag <name>',                          desc: 'View a saved tag by name.' },
+    { name: '!tags',                                desc: 'List all available server tags.' },
+    { name: '!taginfo <name>',                      desc: 'View details and the author of a tag.' },
+    { name: '!tagsearch <query>',                   desc: 'Search tags by keyword.' },
+    { name: '!tagrecent',                           desc: 'View the most recently created tags.' },
+    { name: '!tagpopular',                          desc: 'View the most frequently used tags.' },
+    { name: '!tagalias <name>',                     desc: 'View aliases registered for a tag.' },
+    { name: '!tagraw <name>',                       desc: 'View the raw source content of a tag.' },
+    // ── Reminders ─────────────────────────────────────────────────────────────
+    { name: '!remind <time> <message>',             desc: 'Set a personal reminder (e.g. 1h, 30m, 2d).' },
+    { name: '!reminders',                           desc: 'View all your active reminders.' },
+    { name: '!clearremind <id>',                    desc: 'Cancel a specific reminder by its ID.' },
+    { name: '!snooze <id> <time>',                  desc: 'Snooze a reminder by a set amount of time.' },
+    { name: '!clearallreminders',                   desc: 'Cancel all of your active reminders at once.' },
+    // ── Handbook & Guides ─────────────────────────────────────────────────────
+    { name: '!handbook',                            desc: 'View the official staff and member handbook.' },
+    { name: '!rules',                               desc: 'View the server rules.' },
+    { name: '!guidelines',                          desc: 'View the server community guidelines.' },
+    { name: '!faq',                                 desc: 'View frequently asked questions.' },
+    { name: '!sop',                                 desc: 'View standard operating procedures.' },
+    { name: '!guide <topic>',                       desc: 'View a guide on a specific topic.' },
+    { name: '!guides',                              desc: 'List all available guides and tutorials.' },
+    { name: '!tutorial',                            desc: 'Interactive bot tutorial for new members.' },
+    // ── Modmail & Tickets ─────────────────────────────────────────────────────
+    { name: '!modmail <message>',                   desc: 'Send a message to staff via modmail.' },
+    { name: '!mymodmail',                           desc: 'View your open modmail thread.' },
+    { name: '!closemodmail',                        desc: 'Close your own modmail thread.' },
+    { name: '!modmailstatus',                       desc: 'Check if the modmail system is currently open.' },
+    { name: '!report',                              desc: 'Open a player report ticket.' },
+    { name: '!appeal',                              desc: 'Open a ban appeal ticket.' },
+    // ── Birthdays ─────────────────────────────────────────────────────────────
+    { name: '!setbirthday <month/day>',             desc: 'Set your birthday for the server.' },
+    { name: '!birthday [@user]',                    desc: 'View a member\'s birthday.' },
+    { name: '!birthdaylist',                        desc: 'View upcoming birthdays in the server.' },
+    { name: '!birthdaytoday',                       desc: 'Show members with birthdays today.' },
+    { name: '!clearbirthday',                       desc: 'Remove your birthday from the server.' },
+    // ── Countdowns ────────────────────────────────────────────────────────────
+    { name: '!countdown <event>',                   desc: 'Show a countdown to a scheduled event.' },
+    { name: '!countdowns',                          desc: 'List all active server countdowns.' },
+    { name: '!nextreset',                           desc: 'Countdown to the weekly quota/activity reset.' },
+    { name: '!timer <seconds>',                     desc: 'Start a countdown timer in the channel.' },
+    { name: '!stopwatch',                           desc: 'Start or stop a personal stopwatch.' },
+    // ── Miscellaneous ─────────────────────────────────────────────────────────
+    { name: '!news',                                desc: 'View the latest server news and announcements.' },
+    { name: '!announcements',                       desc: 'View recent server announcements.' },
+    { name: '!updates',                             desc: 'View recent bot updates and new features.' },
+    { name: '!links',                               desc: 'View all saved useful server links.' },
+    { name: '!status',                              desc: 'View the current server and bot status.' },
+    { name: '!leaderboard',                         desc: 'Show the top 15 most active members by score.' },
+    { name: '!unafk',                               desc: 'Remove your AFK status.' },
+    { name: '!afklist',                             desc: 'View members currently marked as AFK.' },
+    { name: '!feedback',                            desc: 'Submit feedback about the server or bot.' },
+    { name: '!changelog',                           desc: 'View the latest bot update changelog.' },
 ];
 
 const STAFF_CMDS = [
-    // ── Setup ─────────────────────────────────────────────────────────────────
-    { name: '!setupmod',                          desc: 'Configure moderator, HR, and management roles + Roblox Group ID. Admin only.' },
-    { name: '!setuplogs',                         desc: 'Configure log channels for moderation, promotions, appeals, training, feedback, and LOA. Admin only.' },
-    { name: '!setupranks',                        desc: 'Map Roblox rank IDs to Discord roles. Admin only.' },
-    { name: '!setupdepartments',                  desc: 'Configure department role assignments. Admin only.' },
-    { name: '!setuproles',                        desc: 'Configure HR and management roles. Admin only.' },
-    { name: '!reportsetup',                       desc: 'Set up the player report ticket system. Requires **Manage Server**.' },
-    { name: '!appealsetup',                       desc: 'Set up the ban appeal ticket system. Requires **Manage Server**.' },
-    { name: '!verifysetup',                       desc: 'Run the 5-step Roblox verification setup wizard. Requires **Manage Server**.' },
-    // ── Moderation ────────────────────────────────────────────────────────────
-    { name: '!warn @user <reason>',               desc: 'Issue a formal warning to a staff member. Creates a case with case number.' },
-    { name: '!strike @user <reason>',             desc: 'Issue a strike. Auto-escalates at 2 (suspension), 3 (demotion), 5 (termination review).' },
-    { name: '!removestrike @user <reason>',       desc: 'Remove one active strike from a staff member.' },
-    { name: '!suspend @user <duration> <reason>', desc: 'Suspend a staff member. Durations: 1d, 3d, 7d, 14d, perm. Auto-expires.' },
-    { name: '!demote @user <reason>',             desc: 'Demote a staff member. Logged to case system and promotion log channel.' },
-    { name: '!terminate @user <reason>',          desc: 'Terminate a staff member. HR role required.' },
-    { name: '!ban @user <reason>',                desc: 'Ban a staff member from the server. HR role required.' },
-    { name: '!unban <userID> <reason>',           desc: 'Unban a user by ID. HR role required.' },
-    { name: '!note @user <text>',                 desc: 'Add a staff note to a member\'s record. Visible in their profile.' },
-    // ── Profiles & LOA ────────────────────────────────────────────────────────
-    { name: '!staffprofile [@user]',              desc: 'Display a full staff profile: cases, strikes, LOA, trainings, activity score.' },
-    { name: '!loasetup',                          desc: 'Post the Leave of Absence panel. HR or Admin only.' },
-    { name: '!loaend',                            desc: 'Manually end your own active LOA.' },
-    // ── Promotions ────────────────────────────────────────────────────────────
-    { name: '!promotionsetup',                    desc: 'Post the promotion request panel. Admin only.' },
-    { name: '!demotionsetup',                     desc: 'Post the demotion recommendation panel. Admin only.' },
-    { name: '!promote @user <reason>',            desc: 'Manually log a promotion. HR role required.' },
-    { name: '!checkpromotion [@user]',            desc: 'Check if a staff member meets promotion eligibility.' },
-    // ── Training ──────────────────────────────────────────────────────────────
-    { name: '!trainingcreate <name>|<desc>',      desc: 'Create a new training session with a name and description.' },
-    { name: '!traininghost <TRAIN-XXXX>',         desc: 'Start hosting a training session. Posts a join button.' },
-    { name: '!trainingcomplete <id> <pass|fail> @users', desc: 'Log training results and update staff training records.' },
-    { name: '!traininglist',                      desc: 'List all training sessions and their status.' },
-    { name: '!feedbacksetup',                     desc: 'Post the staff feedback panel (positive, concern, general). Admin only.' },
-    // ── Activity ──────────────────────────────────────────────────────────────
-    { name: '!activity [@user]',                  desc: 'View a staff member\'s activity statistics and score.' },
-    { name: '!leaderboard',                       desc: 'Show the top 15 most active staff members by score.' },
-    { name: '!addscore @user <points>',           desc: 'Manually add activity score points to a member. Admin only.' },
-    { name: '!resetactivity @user',               desc: 'Reset a member\'s activity tracking data. Admin only.' },
+    // ── Setup & Configuration ─────────────────────────────────────────────────
+    { name: '!setupmod',                                  desc: 'Configure moderator, HR, and management roles + Roblox Group ID. Admin only.' },
+    { name: '!setuplogs',                                 desc: 'Configure log channels for moderation, promotions, appeals, training, feedback, and LOA. Admin only.' },
+    { name: '!setupranks',                                desc: 'Map Roblox rank IDs to Discord roles. Admin only.' },
+    { name: '!setupdepartments',                          desc: 'Configure department role assignments. Admin only.' },
+    { name: '!setuproles',                                desc: 'Configure HR and management roles. Admin only.' },
+    { name: '!reportsetup',                               desc: 'Set up the player report ticket system. Requires Manage Server.' },
+    { name: '!appealsetup',                               desc: 'Set up the ban appeal ticket system. Requires Manage Server.' },
+    { name: '!verifysetup',                               desc: 'Run the 5-step Roblox verification setup wizard. Requires Manage Server.' },
+    { name: '!loasetup',                                  desc: 'Post the Leave of Absence request panel. HR or Admin only.' },
+    { name: '!promotionsetup',                            desc: 'Post the promotion request panel. Admin only.' },
+    { name: '!demotionsetup',                             desc: 'Post the demotion recommendation panel. Admin only.' },
+    { name: '!feedbacksetup',                             desc: 'Post the staff feedback panel (positive, concern, general). Admin only.' },
+    { name: '!trainingsetup',                             desc: 'Configure training session settings and channels. Admin only.' },
+    { name: '!activitysetup',                             desc: 'Configure activity tracking thresholds and channels. Admin only.' },
+    { name: '!deptsetup',                                 desc: 'Set up department channels, roles, and categories. Admin only.' },
+    { name: '!modmailsetup',                              desc: 'Configure the modmail system channel and format. Admin only.' },
+    { name: '!automodsetup',                              desc: 'Configure the automatic moderation system. Admin only.' },
+    { name: '!welcomesetup',                              desc: 'Set up welcome and leave messages for new members. Admin only.' },
+    // ── Moderation Actions ────────────────────────────────────────────────────
+    { name: '!warn @user <reason>',                       desc: 'Issue a formal warning. Creates a numbered case record.' },
+    { name: '!strike @user <reason>',                     desc: 'Issue a strike. Auto-escalates at 2 (suspend), 3 (demote), 5 (termination).' },
+    { name: '!removestrike @user <reason>',               desc: 'Remove one active strike from a staff member.' },
+    { name: '!suspend @user <duration> <reason>',         desc: 'Suspend a staff member. Durations: 1d 3d 7d 14d perm. Auto-expires.' },
+    { name: '!endsuspension @user',                       desc: 'Manually end a member\'s suspension early.' },
+    { name: '!extendsuspension @user <duration>',         desc: 'Extend the duration of an active suspension.' },
+    { name: '!demote @user <reason>',                     desc: 'Demote a staff member. Logged to case system and promotion log.' },
+    { name: '!terminate @user <reason>',                  desc: 'Terminate a staff member. HR role required.' },
+    { name: '!ban @user <reason>',                        desc: 'Ban a staff member from the server. HR role required.' },
+    { name: '!unban <userId> <reason>',                   desc: 'Unban a user by Discord ID. HR role required.' },
+    { name: '!softban @user <reason>',                    desc: 'Ban and immediately unban to purge messages without a permanent ban.' },
+    { name: '!hackban <userId> <reason>',                 desc: 'Ban a user who is not currently in the server.' },
+    { name: '!kick @user <reason>',                       desc: 'Kick a member from the server.' },
+    { name: '!mute @user <duration> <reason>',            desc: 'Mute a member for a set duration.' },
+    { name: '!unmute @user <reason>',                     desc: 'Remove a mute from a member.' },
+    { name: '!timeout @user <duration> <reason>',         desc: 'Apply a Discord timeout to a member.' },
+    { name: '!removetimeout @user',                       desc: 'Remove a Discord timeout from a member early.' },
+    { name: '!note @user <text>',                         desc: 'Add a staff note to a member\'s record.' },
+    { name: '!removenote @user <id>',                     desc: 'Remove a specific note from a member\'s record.' },
+    { name: '!clearnotes @user',                          desc: 'Clear all notes from a member\'s record.' },
+    { name: '!massban <reason>',                          desc: 'Mass ban multiple users at once. Admin only.' },
+    { name: '!massunban <reason>',                        desc: 'Mass unban a list of users. Admin only.' },
+    { name: '!masskick <reason>',                         desc: 'Mass kick multiple members. Admin only.' },
+    { name: '!slowmode [#channel] <seconds>',             desc: 'Set slowmode for a channel (0 to disable).' },
+    { name: '!lockdown',                                  desc: 'Lock all public channels instantly (raid mode). Admin only.' },
+    { name: '!unlock',                                    desc: 'Unlock all channels after a lockdown. Admin only.' },
+    // ── Case Management ───────────────────────────────────────────────────────
+    { name: '!caseinfo <case-id>',                        desc: 'View full details of a case by its ID.' },
+    { name: '!caselist [@user]',                          desc: 'List all cases for a member.' },
+    { name: '!caseedit <case-id> <field> <value>',        desc: 'Edit a field on an existing case.' },
+    { name: '!caseclose <case-id> <reason>',              desc: 'Mark a case as resolved.' },
+    { name: '!casedelete <case-id>',                      desc: 'Permanently delete a case. Admin only.' },
+    { name: '!casenote <case-id> <note>',                 desc: 'Add a note to an existing case.' },
+    { name: '!caseexport [@user]',                        desc: 'Export cases to a text file.' },
+    { name: '!casesearch <query>',                        desc: 'Search cases by reason or username.' },
+    { name: '!casecount [@user]',                         desc: 'Count total cases for a user or server.' },
+    { name: '!casetypes',                                 desc: 'Show a breakdown of all cases by type.' },
+    { name: '!recentcases',                               desc: 'View the 10 most recently created cases.' },
+    { name: '!casehistory @user',                         desc: 'View the full case timeline for a member.' },
+    { name: '!caselookup <case-id>',                      desc: 'Quick case lookup by ID.' },
+    { name: '!caseaudit',                                 desc: 'View the case audit log.' },
+    // ── Staff Records ─────────────────────────────────────────────────────────
+    { name: '!staffprofile [@user]',                      desc: 'Display a full staff profile: cases, strikes, LOA, trainings, activity score.' },
+    { name: '!editprofile @user <field> <value>',         desc: 'Edit a staff record field. Admin only.' },
+    { name: '!staffnotes @user',                          desc: 'View all staff notes for a member.' },
+    { name: '!flagstaff @user <reason>',                  desc: 'Flag a staff member for HR review.' },
+    { name: '!unflagstaff @user',                         desc: 'Remove a flag from a staff member.' },
+    { name: '!flaggedstaff',                              desc: 'List all currently flagged staff members.' },
+    { name: '!staffstatus @user',                         desc: 'Quick status check (suspended, on LOA, flagged, etc.).' },
+    { name: '!staffsearch <query>',                       desc: 'Search the staff directory by name or rank.' },
+    { name: '!stafflist',                                 desc: 'View all tracked staff members.' },
+    { name: '!staffdirectory',                            desc: 'Paginated full staff directory.' },
+    { name: '!staffaudit',                                desc: 'View staff record change history.' },
+    { name: '!staffexport',                               desc: 'Export the full staff directory to a file.' },
+    { name: '!staffcount',                                desc: 'Show total staff count by rank.' },
+    { name: '!staffonline',                               desc: 'Show which staff members are currently online.' },
+    { name: '!staffabsent',                               desc: 'Show staff members who have not been active recently.' },
+    // ── LOA Management ────────────────────────────────────────────────────────
+    { name: '!loaapprove @user',                          desc: 'Approve a pending LOA request.' },
+    { name: '!loadeny @user <reason>',                    desc: 'Deny a pending LOA request.' },
+    { name: '!loaend @user',                              desc: 'Manually end a member\'s active LOA.' },
+    { name: '!loaend',                                    desc: 'Manually end your own active LOA.' },
+    { name: '!loaextend @user <duration>',                desc: 'Extend an active LOA by a set duration.' },
+    { name: '!loareview',                                 desc: 'View all pending LOA requests.' },
+    { name: '!loalist',                                   desc: 'View all currently active LOAs.' },
+    { name: '!loahistory [@user]',                        desc: 'View LOA history for a specific user.' },
+    { name: '!loastats',                                  desc: 'LOA statistics and trends.' },
+    { name: '!loanotify @user',                           desc: 'Send a reminder ping to a member on LOA.' },
+    { name: '!loacheck @user',                            desc: 'Check if a specific member is currently on LOA.' },
+    { name: '!loamanage',                                 desc: 'Open the LOA management panel with all pending requests.' },
+    { name: '!loaarchive',                                desc: 'View archived and expired LOA records.' },
+    { name: '!loaexport',                                 desc: 'Export all LOA records to a file.' },
+    { name: '!loasetlimit <days>',                        desc: 'Set the maximum allowed LOA duration. Admin only.' },
+    // ── Promotions & Demotions ────────────────────────────────────────────────
+    { name: '!promote @user <reason>',                    desc: 'Manually log a promotion. HR role required.' },
+    { name: '!checkpromotion [@user]',                    desc: 'Check if a staff member meets promotion eligibility.' },
+    { name: '!approvepromote <request-id>',               desc: 'Approve a pending promotion request.' },
+    { name: '!denypromote <request-id> <reason>',         desc: 'Deny a promotion request with a reason.' },
+    { name: '!promotionlist',                             desc: 'View all pending promotion requests.' },
+    { name: '!promotionhistory [@user]',                  desc: 'View promotion and demotion history for a user.' },
+    { name: '!promotionrequirements',                     desc: 'View promotion requirements for each rank.' },
+    { name: '!setpromotionreq <rank> <req>',              desc: 'Set promotion requirements for a rank. Admin only.' },
+    { name: '!promotionreview',                           desc: 'View promotion requests that need review.' },
+    { name: '!promotionannounce @user <rank>',            desc: 'Formally announce a promotion in the log channel.' },
+    { name: '!promotionlog',                              desc: 'View recent promotions and demotions.' },
+    { name: '!promotionreset @user',                      desc: 'Reset a member\'s promotion tracking data. Admin only.' },
+    { name: '!promotionfreeze @user',                     desc: 'Freeze a member\'s promotions temporarily.' },
+    { name: '!promotionunfreeze @user',                   desc: 'Unfreeze a member\'s promotions.' },
+    { name: '!promotionaudit',                            desc: 'View the full promotion audit log.' },
+    // ── Training Management ───────────────────────────────────────────────────
+    { name: '!trainingcreate <name>|<desc>',              desc: 'Create a new training session with a name and description.' },
+    { name: '!traininghost <TRAIN-XXXX>',                 desc: 'Start hosting a training session. Posts a join button.' },
+    { name: '!trainingcomplete <id> <pass|fail> @users',  desc: 'Log training results and update staff records.' },
+    { name: '!traininglist',                              desc: 'List all training sessions and their status.' },
+    { name: '!trainingdelete <id>',                       desc: 'Delete a training session. Admin only.' },
+    { name: '!trainingresults <id>',                      desc: 'View full results from a completed training session.' },
+    { name: '!trainingattendance <id>',                   desc: 'View the attendance list for a training session.' },
+    { name: '!trainingschedule',                          desc: 'View all upcoming scheduled training sessions.' },
+    { name: '!trainingannounce <id>',                     desc: 'Announce an upcoming training to the server.' },
+    { name: '!trainingarchive <id>',                      desc: 'Archive a completed training session.' },
+    { name: '!trainingexport <id>',                       desc: 'Export training session data to a file.' },
+    { name: '!trainingnotify <id>',                       desc: 'Send reminder pings for an upcoming training.' },
+    { name: '!trainingcancel <id> <reason>',              desc: 'Cancel a training session with a reason.' },
+    { name: '!trainingreschedule <id> <time>',            desc: 'Reschedule a training session to a new time.' },
+    { name: '!trainingteam',                              desc: 'View and manage the training team roster.' },
+    { name: '!trainingquota',                             desc: 'View or set training host quota requirements.' },
+    { name: '!traininghistory [@user]',                   desc: 'View a user\'s full history as a training host.' },
+    { name: '!trainingpass @user <id>',                   desc: 'Manually mark a member as passed in a training.' },
+    // ── Feedback Management ───────────────────────────────────────────────────
+    { name: '!feedbacklist',                              desc: 'View all submitted staff feedback entries.' },
+    { name: '!feedbackreview <id>',                       desc: 'Review a specific feedback submission.' },
+    { name: '!feedbackapprove <id>',                      desc: 'Approve and acknowledge a feedback entry.' },
+    { name: '!feedbackdeny <id> <reason>',                desc: 'Deny a feedback submission with a reason.' },
+    { name: '!feedbackarchive <id>',                      desc: 'Archive a resolved feedback entry.' },
+    { name: '!feedbackreport <id>',                       desc: 'Flag a feedback entry for escalation.' },
+    { name: '!feedbackstats',                             desc: 'View feedback submission statistics.' },
+    { name: '!feedbackexport',                            desc: 'Export all feedback to a file.' },
+    { name: '!feedbackcategory <type>',                   desc: 'View feedback filtered by category (positive/concern/general).' },
+    { name: '!feedbackrecent',                            desc: 'View the 10 most recently submitted feedback entries.' },
+    // ── Activity Tracking ─────────────────────────────────────────────────────
+    { name: '!activity [@user]',                          desc: 'View a staff member\'s activity statistics and score.' },
+    { name: '!leaderboard',                               desc: 'Show the top 15 most active staff members by score.' },
+    { name: '!addscore @user <points>',                   desc: 'Manually add activity score points to a member. Admin only.' },
+    { name: '!removescore @user <points>',                desc: 'Manually remove activity score points from a member. Admin only.' },
+    { name: '!resetactivity @user',                       desc: 'Reset a member\'s activity tracking data. Admin only.' },
+    { name: '!setactivity @user <count>',                 desc: 'Manually override a member\'s message count. Admin only.' },
+    { name: '!activityreport',                            desc: 'Generate a full activity report for all staff.' },
+    { name: '!activityexport',                            desc: 'Export activity data to a downloadable file.' },
+    { name: '!activityrequirements',                      desc: 'View the activity requirements per rank.' },
+    { name: '!checkquota @user',                          desc: 'Check whether a member is meeting their activity quota.' },
+    { name: '!quotalist',                                 desc: 'List all staff members who are not meeting quota.' },
+    { name: '!setquota <rank> <amount>',                  desc: 'Set the quota requirement for a specific rank. Admin only.' },
+    { name: '!activitylog [@user]',                       desc: 'View the activity log entries for a member.' },
+    { name: '!weeklyreport',                              desc: 'Generate a weekly activity and moderation report.' },
+    { name: '!monthlyreport',                             desc: 'Generate a monthly activity and moderation report.' },
     // ── Departments ───────────────────────────────────────────────────────────
-    { name: '!departments',                       desc: 'Show an overview of all departments with member count and performance.' },
-    { name: '!department <name>',                 desc: 'Show the dashboard for a specific department.' },
-    { name: '!deptadd <dept> @user',              desc: 'Add a staff member to a department. HR or Admin.' },
-    { name: '!deptremove <dept> @user',           desc: 'Remove a staff member from a department. HR or Admin.' },
-    { name: '!deptperformance <dept> <0-100>',    desc: 'Set a department\'s performance score. HR or Admin.' },
-    // ── Analytics ─────────────────────────────────────────────────────────────
-    { name: '!dashboard',                         desc: 'Show a real-time overview dashboard of all staff management stats.' },
-    { name: '!stats',                             desc: 'Show detailed moderation statistics: cases by type, top mods, monthly trends.' },
+    { name: '!departments',                               desc: 'Show an overview of all departments with member count and performance.' },
+    { name: '!department <name>',                         desc: 'Show the full dashboard for a specific department.' },
+    { name: '!deptadd <dept> @user',                      desc: 'Add a staff member to a department. HR or Admin.' },
+    { name: '!deptremove <dept> @user',                   desc: 'Remove a staff member from a department. HR or Admin.' },
+    { name: '!deptperformance <dept> <0-100>',            desc: 'Set a department\'s performance score. HR or Admin.' },
+    { name: '!deptlead <dept>',                           desc: 'View who leads a specific department.' },
+    { name: '!deptsetlead <dept> @user',                  desc: 'Set the lead for a department. Admin only.' },
+    { name: '!deptannounce <dept> <message>',             desc: 'Send an announcement to all department members.' },
+    { name: '!deptlog <dept>',                            desc: 'View the activity log for a department.' },
+    { name: '!deptnotes <dept>',                          desc: 'View internal notes for a department.' },
+    { name: '!deptaddnote <dept> <note>',                 desc: 'Add a note to a department\'s record.' },
+    { name: '!deptmembers <dept>',                        desc: 'View all members in a specific department.' },
+    { name: '!deptinvite <dept> @user',                   desc: 'Invite a member to a department.' },
+    { name: '!deptremoveall <dept>',                      desc: 'Remove all members from a department at once. Admin only.' },
+    { name: '!deptcreate <name>',                         desc: 'Create a new department. Admin only.' },
+    { name: '!deptdelete <name>',                         desc: 'Delete a department permanently. Admin only.' },
+    { name: '!deptrename <dept> <new-name>',              desc: 'Rename a department. Admin only.' },
+    { name: '!deptcolor <dept> <hex>',                    desc: 'Set a department\'s embed color. Admin only.' },
+    { name: '!deptdesc <dept> <desc>',                    desc: 'Set a department\'s description. Admin only.' },
+    { name: '!deptquota <dept> <amount>',                 desc: 'Set an activity quota for a department. Admin only.' },
+    // ── Analytics & Reporting ─────────────────────────────────────────────────
+    { name: '!dashboard',                                 desc: 'Full real-time overview of all staff management stats.' },
+    { name: '!stats',                                     desc: 'Detailed moderation statistics: cases by type, top mods, monthly trends.' },
+    { name: '!statsexport',                               desc: 'Export all stats to a downloadable file.' },
+    { name: '!analyticsreport',                           desc: 'Generate a full analytics report for the server.' },
+    { name: '!casetypebreakdown',                         desc: 'Cases broken down by type (warn/strike/ban/etc.).' },
+    { name: '!modstats [@user]',                          desc: 'View moderation stats for a specific moderator.' },
+    { name: '!topmod',                                    desc: 'Most active moderators this month.' },
+    { name: '!mostreported',                              desc: 'Members who have the most cases filed against them.' },
+    { name: '!casetrends',                                desc: 'View case frequency trends over time.' },
+    { name: '!weeklytrends',                              desc: 'Weekly activity and moderation trends.' },
+    { name: '!monthlytrends',                             desc: 'Monthly moderation and LOA trends.' },
+    { name: '!staffperformance',                          desc: 'Performance report for all staff members.' },
+    { name: '!deptanalytics',                             desc: 'Department-level performance analytics.' },
+    { name: '!traininganalytics',                         desc: 'Training session volume and pass-rate analytics.' },
+    { name: '!loaanalytics',                              desc: 'Leave of absence frequency and duration analytics.' },
+    // ── Roles Management ──────────────────────────────────────────────────────
+    { name: '!giverole @user @role',                      desc: 'Give a role to a member.' },
+    { name: '!removerole @user @role',                    desc: 'Remove a role from a member.' },
+    { name: '!massgive @role @users',                     desc: 'Give a role to multiple members at once.' },
+    { name: '!massremove @role @users',                   desc: 'Remove a role from multiple members at once.' },
+    { name: '!temprole @user @role <duration>',           desc: 'Give a temporary role that auto-expires.' },
+    { name: '!expirerole @user @role',                    desc: 'Immediately expire a temporary role.' },
+    { name: '!listroles',                                 desc: 'List all server roles with member counts.' },
+    { name: '!whohas @role',                              desc: 'Show all members who have a specific role.' },
+    { name: '!inrole @role',                              desc: 'Count the total members in a role.' },
+    { name: '!rolecolor @role <hex>',                     desc: 'Change a role\'s color. Admin only.' },
+    { name: '!rolename @role <name>',                     desc: 'Rename a role. Admin only.' },
+    { name: '!rolepermissions @role',                     desc: 'View all permissions assigned to a role.' },
+    // ── Channel Management ────────────────────────────────────────────────────
+    { name: '!createchannel <name> [category]',           desc: 'Create a new channel in an optional category. Admin only.' },
+    { name: '!deletechannel [#channel]',                  desc: 'Delete a channel. Admin only.' },
+    { name: '!lockchannel [#channel] <reason>',           desc: 'Lock a channel to stop members from sending messages.' },
+    { name: '!unlockchannel [#channel]',                  desc: 'Unlock a channel.' },
+    { name: '!renamechannel [#channel] <name>',           desc: 'Rename a channel. Admin only.' },
+    { name: '!archivechannel [#channel]',                 desc: 'Archive a channel by moving it to an archive category.' },
+    { name: '!clonechannel [#channel]',                   desc: 'Clone a channel with the same settings.' },
+    { name: '!movechannel [#channel] <category>',         desc: 'Move a channel to a different category.' },
+    { name: '!channelperms [#channel]',                   desc: 'View permission overwrites for a channel.' },
+    { name: '!nsfw [#channel] <on|off>',                  desc: 'Toggle NSFW flag on a channel. Admin only.' },
+    // ── Announcements & Comms ─────────────────────────────────────────────────
+    { name: '!announce <#channel> <message>',             desc: 'Send an announcement embed to any channel.' },
+    { name: '!dm @user <message>',                        desc: 'Direct message a member as the bot. Admin only.' },
+    { name: '!bulkdm @role <message>',                    desc: 'DM all members with a specific role. Admin only.' },
+    { name: '!embed <#channel> <json>',                   desc: 'Send a fully custom embed to a channel.' },
+    { name: '!pin <message-id>',                          desc: 'Pin a message in the current channel.' },
+    { name: '!unpin <message-id>',                        desc: 'Unpin a pinned message.' },
+    { name: '!purge <amount>',                            desc: 'Bulk delete up to 100 messages.' },
+    { name: '!say <#channel> <message>',                  desc: 'Send a plain message as the bot.' },
+    { name: '!staffannounce <message>',                   desc: 'Send a staff-only announcement to the staff channel.' },
+    { name: '!editannouncement <msg-id> <text>',          desc: 'Edit an existing bot announcement message.' },
+    // ── Tickets Management ────────────────────────────────────────────────────
+    { name: '!ticketlist',                                desc: 'View all currently open tickets.' },
+    { name: '!ticketclose <id> <reason>',                 desc: 'Close a ticket with a reason.' },
+    { name: '!ticketarchive <id>',                        desc: 'Archive a closed ticket for record-keeping.' },
+    { name: '!ticketclaim <id>',                          desc: 'Claim a ticket as your own to handle.' },
+    { name: '!tickettransfer <id> @user',                 desc: 'Transfer a ticket to another staff member.' },
+    { name: '!ticketadduser <id> @user',                  desc: 'Add a user to a ticket thread.' },
+    { name: '!ticketremoveuser <id> @user',               desc: 'Remove a user from a ticket thread.' },
+    { name: '!ticketlog <id>',                            desc: 'View the full transcript log of a ticket.' },
+    { name: '!ticketstats',                               desc: 'View ticket volume and resolution statistics.' },
+    { name: '!ticketblacklist @user',                     desc: 'Blacklist a user from opening tickets.' },
+    // ── Appeals & Reports ─────────────────────────────────────────────────────
+    { name: '!appeallist',                                desc: 'View all open ban/moderation appeals.' },
+    { name: '!appealclose <id> <reason>',                 desc: 'Close an appeal with a reason.' },
+    { name: '!appealapprove <id> <reason>',               desc: 'Approve an appeal and reverse the punishment.' },
+    { name: '!appealdeny <id> <reason>',                  desc: 'Deny an appeal with a reason.' },
+    { name: '!appealreview <id>',                         desc: 'Mark an appeal as currently under review.' },
+    { name: '!appealnote <id> <note>',                    desc: 'Add an internal note to an appeal thread.' },
+    { name: '!appealstats',                               desc: 'View appeal approval/denial statistics.' },
+    { name: '!reportlist',                                desc: 'View all open player reports.' },
+    { name: '!reportclaim <id>',                          desc: 'Claim a player report to investigate.' },
+    { name: '!reportclose <id> <reason>',                 desc: 'Close a player report with a resolution.' },
+    // ── Verification Management ───────────────────────────────────────────────
+    { name: '!verifymember @user',                        desc: 'Manually verify a member\'s Roblox account.' },
+    { name: '!unverify @user',                            desc: 'Manually unverify a member.' },
+    { name: '!verifylist',                                desc: 'View all verified members in this server.' },
+    { name: '!verifyexport',                              desc: 'Export the full verified members list.' },
+    { name: '!verifycheck @user',                         desc: 'Check a member\'s verification status.' },
+    { name: '!verifymanual @user <roblox-name>',          desc: 'Manually link a specific Roblox account to a member.' },
+    { name: '!verifyblacklist @user',                     desc: 'Blacklist a member from using the verify system.' },
+    { name: '!verifywhitelist @user',                     desc: 'Whitelist a member to bypass verification requirements.' },
+    { name: '!verifystats',                               desc: 'View verification statistics.' },
+    { name: '!verifyaudit',                               desc: 'View the verification audit log.' },
+    // ── Roblox Group Management ───────────────────────────────────────────────
+    { name: '!groupsync',                                 desc: 'Sync Discord roles with Roblox group ranks.' },
+    { name: '!grouprank @user <rank>',                    desc: 'Set a member\'s Roblox group rank.' },
+    { name: '!groupexile @user <reason>',                 desc: 'Exile a member from the Roblox group.' },
+    { name: '!groupshout <message>',                      desc: 'Post a shout to the Roblox group wall.' },
+    { name: '!groupwall',                                 desc: 'View recent Roblox group wall posts from Discord.' },
+    { name: '!groupmembers',                              desc: 'View Roblox group member counts broken down by rank.' },
+    { name: '!groupstats',                                desc: 'View group statistics and recent activity.' },
+    { name: '!groupaudit',                                desc: 'View the Roblox group audit log.' },
+    { name: '!grouplog',                                  desc: 'View recent rank changes in the Roblox group.' },
+    { name: '!groupconfig',                               desc: 'Configure Roblox group sync settings. Admin only.' },
+    // ── Points Admin ──────────────────────────────────────────────────────────
+    { name: '!givepoints @user <amount> <reason>',        desc: 'Award points to a member. Logged with reason.' },
+    { name: '!removepoints @user <amount> <reason>',      desc: 'Deduct points from a member. Logged with reason.' },
+    { name: '!resetpoints @user',                         desc: 'Reset a member\'s points balance to zero.' },
+    { name: '!setpoints @user <amount>',                  desc: 'Set a member\'s points to a specific value.' },
+    { name: '!pointslog @user',                           desc: 'View a member\'s full points transaction history.' },
+    { name: '!pointsexport',                              desc: 'Export all points data to a file.' },
+    { name: '!pointsaudit',                               desc: 'View admin-level points change audit log.' },
+    { name: '!pointsconfig',                              desc: 'Configure the points system settings. Admin only.' },
+    // ── Events Admin ──────────────────────────────────────────────────────────
+    { name: '!eventcreate <name>|<desc>|<time>',          desc: 'Create a new server event.' },
+    { name: '!eventdelete <id>',                          desc: 'Delete an event permanently. Admin only.' },
+    { name: '!eventlist',                                 desc: 'View all events (past and upcoming) with status.' },
+    { name: '!eventedit <id> <field> <value>',            desc: 'Edit an event\'s details.' },
+    { name: '!eventannounce <id>',                        desc: 'Announce an event to the server.' },
+    { name: '!eventclose <id>',                           desc: 'Mark an event as completed.' },
+    { name: '!eventarchive <id>',                         desc: 'Archive an old event.' },
+    { name: '!eventattendance <id>',                      desc: 'View and export the attendance list for an event.' },
+    { name: '!eventresults <id>',                         desc: 'Log and publish results from a completed event.' },
+    { name: '!eventrsvp <id>',                            desc: 'View the RSVP list for an event.' },
+    { name: '!eventremind <id>',                          desc: 'Send reminder pings to all RSVPed members.' },
+    // ── Automoderation ────────────────────────────────────────────────────────
+    { name: '!automodstatus',                             desc: 'View the current automod configuration.' },
+    { name: '!automodtest <text>',                        desc: 'Test a piece of text against the automod filters.' },
+    { name: '!automodlog',                                desc: 'View recent actions taken by automod.' },
+    { name: '!addfilter <type> <pattern>',                desc: 'Add a word or pattern to the automod filter.' },
+    { name: '!removefilter <id>',                         desc: 'Remove a filter entry by its ID.' },
+    { name: '!filterlist',                                desc: 'View all active automod filters.' },
+    { name: '!addexempt @role',                           desc: 'Exempt a role from all automod checks.' },
+    { name: '!removeexempt @role',                        desc: 'Remove a role\'s automod exemption.' },
+    { name: '!exemptlist',                                desc: 'View all roles that are exempt from automod.' },
+    { name: '!antispamconfig <threshold>',                desc: 'Configure the anti-spam message threshold.' },
+    { name: '!anticapsconfig <percent>',                  desc: 'Configure the anti-caps percentage threshold.' },
+    { name: '!antiinviteconfig <on|off>',                 desc: 'Toggle invite link blocking via automod.' },
+    // ── Giveaway Admin ────────────────────────────────────────────────────────
+    { name: '!gcreate <prize>|<duration>|<winners>',      desc: 'Create a giveaway with prize, duration, and winner count.' },
+    { name: '!gend <id>',                                 desc: 'End a giveaway early and select winner(s).' },
+    { name: '!greroll <id>',                              desc: 'Reroll a giveaway to pick a new winner.' },
+    { name: '!glist',                                     desc: 'View all active giveaways.' },
+    { name: '!gdelete <id>',                              desc: 'Delete a giveaway permanently.' },
+    { name: '!gstart <id>',                               desc: 'Start a pre-configured scheduled giveaway.' },
+    { name: '!greq <id> <requirement>',                   desc: 'Set entry requirements for a giveaway.' },
+    { name: '!gannounce <id>',                            desc: 'Announce a giveaway to the server.' },
+    { name: '!gstats',                                    desc: 'View giveaway participation and win statistics.' },
+    { name: '!gexport <id>',                              desc: 'Export the entry list for a giveaway.' },
+    // ── Tag Admin ─────────────────────────────────────────────────────────────
+    { name: '!tagcreate <name> <content>',                desc: 'Create a new server tag.' },
+    { name: '!tagdelete <name>',                          desc: 'Delete a tag permanently.' },
+    { name: '!tagedit <name> <new-content>',              desc: 'Edit the content of an existing tag.' },
+    { name: '!taginfo <name>',                            desc: 'View tag details, author, and usage count.' },
+    { name: '!tagtransfer <name> @user',                  desc: 'Transfer ownership of a tag to another member.' },
+    { name: '!taglock <name>',                            desc: 'Lock a tag so only admins can edit it.' },
+    { name: '!tagunlock <name>',                          desc: 'Unlock a tag for editing.' },
+    { name: '!tagstats',                                  desc: 'View tag usage statistics across the server.' },
+    // ── Modmail Admin ─────────────────────────────────────────────────────────
+    { name: '!modmailopen @user',                         desc: 'Open a modmail thread with a specific member.' },
+    { name: '!modmailclose <id> <reason>',                desc: 'Close a modmail thread.' },
+    { name: '!modmailblock @user',                        desc: 'Block a member from using modmail.' },
+    { name: '!modmailunblock @user',                      desc: 'Unblock a member\'s modmail access.' },
+    { name: '!modmaillist',                               desc: 'View all open modmail threads.' },
+    { name: '!modmaillog <id>',                           desc: 'View the full transcript of a modmail thread.' },
+    { name: '!modmailstats',                              desc: 'View modmail volume and resolution statistics.' },
+    { name: '!modmailblacklist',                          desc: 'View the modmail block list.' },
+    // ── Warning / Strike / Ban Records ────────────────────────────────────────
+    { name: '!warnlist [@user]',                          desc: 'View all warnings for a user or the whole server.' },
+    { name: '!warnremove @user <id>',                     desc: 'Remove a specific warning by its ID.' },
+    { name: '!warnclear @user',                           desc: 'Clear all warnings from a user\'s record. Admin only.' },
+    { name: '!banlist',                                   desc: 'View all currently banned users.' },
+    { name: '!baninfo <userId>',                          desc: 'View details on a specific ban entry.' },
+    { name: '!strikelist [@user]',                        desc: 'List all strikes for a user.' },
+    { name: '!strikereset @user',                         desc: 'Reset all strikes for a user. Admin only.' },
+    { name: '!suspensionlist',                            desc: 'View all currently active suspensions.' },
+    { name: '!suspensionend @user',                       desc: 'End a member\'s suspension immediately.' },
+    { name: '!mutelist',                                  desc: 'View all currently muted members.' },
+    // ── Server Management ─────────────────────────────────────────────────────
+    { name: '!serverinfo',                                desc: 'View detailed server info as a staff embed.' },
+    { name: '!serverstats',                               desc: 'View server statistics (members, channels, roles).' },
+    { name: '!serveraudit',                               desc: 'View the server\'s Discord audit log entries.' },
+    { name: '!invitelist',                                desc: 'View all active server invites.' },
+    { name: '!invitedelete <code>',                       desc: 'Delete a specific server invite.' },
+    { name: '!invitestats',                               desc: 'View invite usage and join statistics.' },
+    { name: '!backupconfig',                              desc: 'Back up the server bot configuration. Admin only.' },
+    { name: '!restoreconfig',                             desc: 'Restore a previous bot configuration backup. Admin only.' },
+    // ── Audit & Compliance ────────────────────────────────────────────────────
+    { name: '!auditlog <type>',                           desc: 'View the bot\'s internal audit log by type.' },
+    { name: '!auditstaff @user',                          desc: 'View all audit log entries for a staff member.' },
+    { name: '!auditmod @user',                            desc: 'View moderation audit entries for a moderator.' },
+    { name: '!auditexport <type>',                        desc: 'Export an audit log to a file.' },
+    { name: '!compliancereport',                          desc: 'Generate a full compliance and activity report. Admin only.' },
+    { name: '!quotareport',                               desc: 'Show all staff members failing to meet quota.' },
+    { name: '!inactivereport',                            desc: 'List staff members with no activity in the last 7 days.' },
+    { name: '!staffhealth',                               desc: 'Overview of staff health: LOA, strikes, quota failures.' },
 ];
 
 // Keep a combined list for any code that still references COMMANDS
@@ -1738,89 +2298,59 @@ client.on('messageCreate', async (message) => {
         });
     }
 
-    // ── !cmds ─────────────────────────────────────────────────────────────────
-    if (command === 'cmds') {
-        const PAGE_SIZE = 8;
-        let tab  = 'member'; // 'member' | 'staff'
+    // ── Paginator helper (shared by !cmds and !staffcmds) ────────────────────
+    const buildCmdsPaginator = async (replyTarget, list, color, title) => {
+        const PAGE_SIZE  = 8;
         let page = 1;
+        const totalPages = () => Math.ceil(list.length / PAGE_SIZE);
 
-        const tabList = () => tab === 'member' ? MEMBER_CMDS : STAFF_CMDS;
+        const buildEmbed = () => new EmbedBuilder()
+            .setColor(color)
+            .setTitle(title)
+            .setDescription(
+                list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+                    .map(c => `**${c.name}**\n${c.desc}`).join('\n\n')
+            )
+            .setFooter({ text: `Page ${page} of ${totalPages()}  •  ${list.length} commands total` });
 
-        const buildEmbed = () => {
-            const list       = tabList();
-            const totalPages = Math.ceil(list.length / PAGE_SIZE);
-            const slice      = list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-            const isStaff    = tab === 'staff';
-            return new EmbedBuilder()
-                .setColor(isStaff ? 0xed4245 : 0x5865f2)
-                .setTitle(isStaff ? '🛡️ RoUtil — Staff Commands' : '👤 RoUtil — Member Commands')
-                .setDescription(slice.map(c => `**${c.name}**\n${c.desc}`).join('\n\n'))
-                .setFooter({ text: `Page ${page} of ${totalPages}  •  ${list.length} commands in this section` });
-        };
+        const buildRow = () => new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+            new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages()}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages())
+        );
 
-        const buildRows = () => {
-            const list       = tabList();
-            const totalPages = Math.ceil(list.length / PAGE_SIZE);
+        const msg = await replyTarget.reply({ embeds: [buildEmbed()], components: [buildRow()] });
 
-            // Row 1 — section tabs
-            const tabRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('cmds_tab_member')
-                    .setLabel('👤 Members')
-                    .setStyle(tab === 'member' ? ButtonStyle.Primary : ButtonStyle.Secondary)
-                    .setDisabled(tab === 'member'),
-                new ButtonBuilder()
-                    .setCustomId('cmds_tab_staff')
-                    .setLabel('🛡️ Staff')
-                    .setStyle(tab === 'staff' ? ButtonStyle.Danger : ButtonStyle.Secondary)
-                    .setDisabled(tab === 'staff')
-            );
-
-            // Row 2 — page nav (only shown when multiple pages)
-            if (totalPages <= 1) return [tabRow];
-
-            const pageRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
-                new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-                new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages)
-            );
-            return [tabRow, pageRow];
-        };
-
-        const cmdsMsg = await message.reply({ embeds: [buildEmbed()], components: buildRows() });
-
-        const collector = cmdsMsg.createMessageComponentCollector({
-            filter: i => i.user.id === message.author.id,
+        const collector = msg.createMessageComponentCollector({
+            filter: i => i.user.id === replyTarget.author.id,
             time: 120_000
         });
 
         collector.on('collect', async (interaction) => {
-            if (interaction.customId === 'cmds_tab_member') { tab = 'member'; page = 1; }
-            if (interaction.customId === 'cmds_tab_staff')  { tab = 'staff';  page = 1; }
-            if (interaction.customId === 'cmds_prev') page--;
-            if (interaction.customId === 'cmds_next') page++;
-            await interaction.update({ embeds: [buildEmbed()], components: buildRows() });
+            if (interaction.customId === 'cmds_prev' && page > 1) page--;
+            if (interaction.customId === 'cmds_next' && page < totalPages()) page++;
+            await interaction.update({ embeds: [buildEmbed()], components: [buildRow()] });
         });
 
         collector.on('end', () => {
-            const list       = tabList();
-            const totalPages = Math.ceil(list.length / PAGE_SIZE);
-            const disabledRows = [
-                new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('cmds_tab_member').setLabel('👤 Members').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                    new ButtonBuilder().setCustomId('cmds_tab_staff').setLabel('🛡️ Staff').setStyle(ButtonStyle.Secondary).setDisabled(true)
-                )
-            ];
-            if (totalPages > 1) disabledRows.push(
-                new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
-                    new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
-                    new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(true)
-                )
+            const disabledRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('cmds_prev').setLabel('◀ Prev').setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('cmds_page').setLabel(`${page} / ${totalPages()}`).setStyle(ButtonStyle.Secondary).setDisabled(true),
+                new ButtonBuilder().setCustomId('cmds_next').setLabel('Next ▶').setStyle(ButtonStyle.Secondary).setDisabled(true)
             );
-            cmdsMsg.edit({ components: disabledRows }).catch(() => {});
+            msg.edit({ components: [disabledRow] }).catch(() => {});
         });
+    };
 
+    // ── !cmds — member commands only ─────────────────────────────────────────
+    if (command === 'cmds') {
+        await buildCmdsPaginator(message, MEMBER_CMDS, 0x5865f2, '👤 RoUtil — Member Commands');
+        return;
+    }
+
+    // ── !staffcmds — staff commands only ─────────────────────────────────────
+    if (command === 'staffcmds') {
+        await buildCmdsPaginator(message, STAFF_CMDS, 0xed4245, '🛡️ RoUtil — Staff Commands');
         return;
     }
 
