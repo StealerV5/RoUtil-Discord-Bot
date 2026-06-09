@@ -165,17 +165,19 @@ async function handleInteraction(interaction) {
         await interaction.update({
             embeds: [new EmbedBuilder().setColor(0x5865f2)
                 .setTitle('⚙️ Staff Mod Setup — Step 4: Roblox Group ID')
-                .setDescription('Reply with your **Roblox Group ID** in this channel within 2 minutes.')
+                .setDescription('Reply with your **Roblox Group ID** in this channel within 2 minutes.\nType `none` to skip this step.')
                 .addFields({ name: '✅ Management Roles Saved', value: cfg.mgmtRoles.map(r => `<@&${r}>`).join(', '), inline: false })
-                .setFooter({ text: 'Step 4 of 4 • Reply with Group ID' })],
+                .setFooter({ text: 'Step 4 of 4 • Reply with Group ID or "none" to skip' })],
             components: []
         });
 
-        // Collect the group ID reply
-        const filter  = m => m.author.id === interaction.user.id && /^\d+$/.test(m.content.trim());
+        // Collect the group ID reply — accept a numeric ID or the word "none"
+        const filter  = m => m.author.id === interaction.user.id &&
+            (/^\d+$/.test(m.content.trim()) || m.content.trim().toLowerCase() === 'none');
         const replies = await interaction.channel.awaitMessages({ filter, max: 1, time: 120_000 }).catch(() => null);
         if (replies?.size) {
-            cfg.robloxGroupId = replies.first().content.trim();
+            const answer = replies.first().content.trim();
+            cfg.robloxGroupId = answer.toLowerCase() === 'none' ? null : answer;
             saveCfg(db);
             setupState.delete(gid);
             await interaction.channel.send({
@@ -185,7 +187,7 @@ async function handleInteraction(interaction) {
                         { name: '🛡️ Mod Roles',   value: cfg.modRoles.map(r => `<@&${r}>`).join(', '),  inline: false },
                         { name: '⚖️ HR Roles',    value: cfg.hrRoles.map(r => `<@&${r}>`).join(', '),   inline: false },
                         { name: '🏛️ Mgmt Roles', value: cfg.mgmtRoles.map(r => `<@&${r}>`).join(', '), inline: false },
-                        { name: '🎮 Group ID',    value: cfg.robloxGroupId,                               inline: true  }
+                        { name: '🎮 Group ID',    value: cfg.robloxGroupId ?? 'Not set',                  inline: true  }
                     )
                     .setDescription('Use `!setuplogs` next to configure log channels.')
                 ]
