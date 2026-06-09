@@ -23,6 +23,12 @@ const activitySys  = require('./systems/activity');
 const deptSys      = require('./systems/departments');
 const analyticsSys = require('./systems/analytics');
 
+// ── Utility & social systems ──────────────────────────────────────────────────
+const BOT_START  = Date.now();
+const funSys     = require('./systems/fun');
+const socialSys  = require('./systems/social');
+const robloxExt  = require('./systems/robloxext');
+
 // ── Web server + Dashboard API ────────────────────────────────────────────────
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1092,6 +1098,7 @@ client.on('interactionCreate', async (interaction) => {
     if (cid.startsWith('act_'))  return activitySys.handleInteraction(interaction).catch(console.error);
     if (cid.startsWith('dept_')) return deptSys.handleInteraction(interaction).catch(console.error);
     if (cid.startsWith('dash_')) return analyticsSys.handleInteraction(interaction).catch(console.error);
+    if (cid.startsWith('poll_')) return socialSys.handlePollVote(interaction).catch(console.error);
     if (!interaction.guild) return;
     const gid = interaction.guild.id;
 
@@ -1915,6 +1922,10 @@ client.on('messageCreate', async (message) => {
     if (DEPT_CMDS.includes(command))  return deptSys.handleCommand(message, command, args).catch(console.error);
     if (STATS_CMDS.includes(command)) return analyticsSys.handleCommand(message, command, args).catch(console.error);
 
+    if (funSys.FUN_CMDS.includes(command))            return funSys.handleCommand(message, command, args).catch(console.error);
+    if (socialSys.SOCIAL_CMDS.includes(command))      return socialSys.handleCommand(message, command, args, client).catch(console.error);
+    if (robloxExt.ROBLOX_EXT_CMDS.includes(command))  return robloxExt.handleCommand(message, command, args).catch(console.error);
+
     // ── !ping ─────────────────────────────────────────────────────────────────
     if (command === 'ping') {
         return message.reply('Pong! 🏓');
@@ -2346,6 +2357,253 @@ client.on('messageCreate', async (message) => {
     if (command === 'cmds') {
         await buildCmdsPaginator(message, MEMBER_CMDS, 0x5865f2, '👤 RoUtil — Member Commands');
         return;
+    }
+
+    // ── AFK mention notification ──────────────────────────────────────────────
+    if (message.mentions.users.size) {
+        const afkDb = dbLoad('afk', {});
+        const notifs = [...message.mentions.users.values()]
+            .filter(u => afkDb[u.id] && u.id !== message.author.id)
+            .map(u => `> 💤 **${u.username}** is AFK: ${afkDb[u.id].reason} *(since <t:${Math.floor(afkDb[u.id].since / 1000)}:R>)*`)
+            .join('\n');
+        if (notifs) message.reply(notifs).catch(() => {});
+    }
+
+    // ── !botinfo ──────────────────────────────────────────────────────────────
+    if (command === 'botinfo') {
+        const guilds = client.guilds.cache.size;
+        const users  = client.guilds.cache.reduce((a, g) => a + g.memberCount, 0);
+        const upSec  = Math.floor((Date.now() - BOT_START) / 1000);
+        const upStr  = `${Math.floor(upSec / 86400)}d ${Math.floor((upSec % 86400) / 3600)}h ${Math.floor((upSec % 3600) / 60)}m`;
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2)
+            .setTitle('🤖 RoUtil Bot Info')
+            .setThumbnail(client.user.displayAvatarURL())
+            .addFields(
+                { name: '🏷️ Tag',     value: client.user.tag,                                                          inline: true },
+                { name: '🆔 ID',      value: client.user.id,                                                            inline: true },
+                { name: '🌐 Servers', value: guilds.toString(),                                                          inline: true },
+                { name: '👥 Users',   value: users.toLocaleString(),                                                    inline: true },
+                { name: '⏱️ Uptime',  value: upStr,                                                                     inline: true },
+                { name: '📅 Created', value: `<t:${Math.floor(client.user.createdTimestamp / 1000)}:D>`,                inline: true },
+                { name: '📚 Library', value: 'discord.js v14',                                                          inline: true },
+                { name: '🟢 Status',  value: 'Online',                                                                  inline: true }
+            )] });
+    }
+
+    // ── !uptime ───────────────────────────────────────────────────────────────
+    if (command === 'uptime') {
+        const upSec = Math.floor((Date.now() - BOT_START) / 1000);
+        const d = Math.floor(upSec / 86400), h = Math.floor((upSec % 86400) / 3600),
+              m = Math.floor((upSec % 3600) / 60), s = upSec % 60;
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('⏱️ Bot Uptime')
+            .addFields(
+                { name: 'Running For',  value: `${d}d ${h}h ${m}m ${s}s`,                     inline: true },
+                { name: 'Online Since', value: `<t:${Math.floor(BOT_START / 1000)}:F>`,        inline: true }
+            )] });
+    }
+
+    // ── !prefix ───────────────────────────────────────────────────────────────
+    if (command === 'prefix') {
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('⚙️ Bot Prefix')
+            .setDescription(`Current prefix: **\`${prefix}\`**\n\nChange it with \`${prefix}setprefix <new>\``)] });
+    }
+
+    // ── !invite ───────────────────────────────────────────────────────────────
+    if (command === 'invite') {
+        const link = `https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`;
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('📨 Invite RoUtil')
+            .setDescription(`[Click here to invite RoUtil!](${link})\n\nRequires **Administrator** permission for full functionality.`)] });
+    }
+
+    // ── !servericon ───────────────────────────────────────────────────────────
+    if (command === 'servericon') {
+        const icon = message.guild.iconURL({ size: 1024 });
+        if (!icon) return message.reply('❌ This server has no icon set.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`🖼️ ${message.guild.name} — Icon`).setImage(icon)] });
+    }
+
+    // ── !serverbanner ─────────────────────────────────────────────────────────
+    if (command === 'serverbanner') {
+        const banner = message.guild.bannerURL({ size: 1024 });
+        if (!banner) return message.reply('❌ This server has no banner set.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`🖼️ ${message.guild.name} — Banner`).setImage(banner)] });
+    }
+
+    // ── !membercount ──────────────────────────────────────────────────────────
+    if (command === 'membercount') {
+        const total  = message.guild.memberCount;
+        const humans = message.guild.members.cache.filter(m => !m.user.bot).size;
+        const bots   = message.guild.members.cache.filter(m => m.user.bot).size;
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle('👥 Member Count')
+            .addFields(
+                { name: '👥 Total',  value: total.toLocaleString(),  inline: true },
+                { name: '🧑 Humans', value: humans.toLocaleString(), inline: true },
+                { name: '🤖 Bots',   value: bots.toLocaleString(),   inline: true }
+            )] });
+    }
+
+    // ── !roleinfo ─────────────────────────────────────────────────────────────
+    if (command === 'roleinfo') {
+        const role = message.mentions.roles.first() || message.guild.roles.cache.get(args[0]);
+        if (!role) return message.reply(`❌ Mention a role or provide its ID. Example: \`${prefix}roleinfo @Moderator\``);
+        return message.reply({ embeds: [new EmbedBuilder()
+            .setColor(role.color || 0x5865f2)
+            .setTitle(`🏷️ Role: ${role.name}`)
+            .addFields(
+                { name: '🆔 ID',          value: role.id,                                                                       inline: true },
+                { name: '🎨 Color',       value: `#${role.color.toString(16).padStart(6, '0').toUpperCase()}`,                  inline: true },
+                { name: '👥 Members',     value: role.members.size.toString(),                                                   inline: true },
+                { name: '📅 Created',     value: `<t:${Math.floor(role.createdTimestamp / 1000)}:D>`,                           inline: true },
+                { name: '📌 Position',    value: role.position.toString(),                                                       inline: true },
+                { name: '🔔 Mentionable', value: role.mentionable ? 'Yes' : 'No',                                               inline: true },
+                { name: '📌 Hoisted',     value: role.hoist ? 'Yes' : 'No',                                                     inline: true },
+                { name: '🤖 Managed',     value: role.managed ? 'Yes' : 'No',                                                   inline: true }
+            )] });
+    }
+
+    // ── !channelinfo ──────────────────────────────────────────────────────────
+    if (command === 'channelinfo') {
+        const ch = message.mentions.channels.first() || message.channel;
+        const typeStr = { [ChannelType.GuildText]: 'Text', [ChannelType.GuildVoice]: 'Voice', [ChannelType.GuildAnnouncement]: 'Announcement', [ChannelType.GuildForum]: 'Forum' }[ch.type] || ch.type.toString();
+        const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(`📢 #${ch.name}`)
+            .addFields(
+                { name: '🆔 ID',      value: ch.id,                                               inline: true },
+                { name: '📁 Type',    value: typeStr,                                              inline: true },
+                { name: '📅 Created', value: `<t:${Math.floor(ch.createdTimestamp / 1000)}:D>`,   inline: true }
+            );
+        if (ch.topic) embed.addFields({ name: '📝 Topic', value: ch.topic.slice(0, 200) });
+        return message.reply({ embeds: [embed] });
+    }
+
+    // ── !roles ────────────────────────────────────────────────────────────────
+    if (command === 'roles') {
+        const roles = [...message.guild.roles.cache.values()]
+            .filter(r => r.id !== message.guild.id)
+            .sort((a, b) => b.position - a.position)
+            .slice(0, 50);
+        if (!roles.length) return message.reply('This server has no roles.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2)
+            .setTitle(`🏷️ Server Roles (${message.guild.roles.cache.size - 1})`)
+            .setDescription(roles.map(r => r.toString()).join(' '))] });
+    }
+
+    // ── !emojis ───────────────────────────────────────────────────────────────
+    if (command === 'emojis') {
+        const emojis = [...message.guild.emojis.cache.values()];
+        if (!emojis.length) return message.reply('This server has no custom emojis.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2)
+            .setTitle(`😀 Server Emojis (${emojis.length})`)
+            .setDescription(emojis.slice(0, 50).map(e => e.toString()).join(' '))] });
+    }
+
+    // ── !stickers ─────────────────────────────────────────────────────────────
+    if (command === 'stickers') {
+        const stickers = [...message.guild.stickers.cache.values()];
+        if (!stickers.length) return message.reply('This server has no custom stickers.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2)
+            .setTitle(`🏷️ Server Stickers (${stickers.length})`)
+            .setDescription(stickers.slice(0, 20).map(s => `**${s.name}** — \`${s.id}\``).join('\n'))] });
+    }
+
+    // ── !boosts ───────────────────────────────────────────────────────────────
+    if (command === 'boosts') {
+        const g = message.guild;
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0xff73fa).setTitle('🚀 Server Boosts')
+            .addFields(
+                { name: '💎 Boost Level', value: `Level ${g.premiumTier}`,                                        inline: true },
+                { name: '🚀 Boosts',      value: (g.premiumSubscriptionCount ?? 0).toString(),                    inline: true },
+                { name: '👥 Boosters',    value: g.members.cache.filter(m => m.premiumSince).size.toString(),     inline: true }
+            )] });
+    }
+
+    // ── Verification info commands ────────────────────────────────────────────
+    if (command === 'verifyinfo') {
+        const vCfg = (dbLoad('verifyConfig', {})[message.guild.id] || {});
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Verification Info')
+            .addFields(
+                { name: '⚙️ Method', value: vCfg.method || 'Not configured', inline: true },
+                { name: '🔑 How to Verify', value: vCfg.method ? 'Use the verify button in your server or run `!verify`.' : 'Verification has not been configured yet. Admins can use `!verifysetup`.' }
+            )] });
+    }
+
+    if (command === 'myverify') {
+        const links = (dbLoad('verifyConfig', {})[message.guild.id] || {}).links || {};
+        const link  = links[message.author.id];
+        if (!link) return message.reply('❌ You are not verified yet. Use `!verify` or the verify button in this server.');
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Your Linked Roblox Account')
+            .addFields(
+                { name: '🎮 Roblox Username', value: link.robloxName,               inline: true },
+                { name: '🆔 Roblox ID',       value: (link.robloxId || 'N/A').toString(), inline: true }
+            )] });
+    }
+
+    if (command === 'verifycheck') {
+        const target = message.mentions.users.first();
+        if (!target) return message.reply(`❌ Mention a user. Example: \`${prefix}verifycheck @someone\``);
+        const links = (dbLoad('verifyConfig', {})[message.guild.id] || {}).links || {};
+        const link  = links[target.id];
+        if (!link) return message.reply({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('❌ Not Verified').setDescription(`**${target.displayName}** is not verified.`)] });
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Verified User')
+            .addFields(
+                { name: '👤 Discord',         value: `${target.tag}`,                    inline: true },
+                { name: '🎮 Roblox Username', value: link.robloxName,                    inline: true },
+                { name: '🆔 Roblox ID',       value: (link.robloxId || 'N/A').toString(), inline: true }
+            )] });
+    }
+
+    // ── My record commands ────────────────────────────────────────────────────
+    if (command === 'myrecord') {
+        const _gid = message.guild.id, _uid = message.author.id;
+        const rec = dbLoad('staffData', {})[_gid]?.[_uid];
+        if (!rec) return message.reply('✅ You have no moderation record on file.');
+        const warns   = (rec.warnings    || []).length;
+        const strikes = (rec.strikes     || []).length;
+        const active  = rec.activeStrikes || 0;
+        const susp    = (rec.suspensions || []).length;
+        const cases   = (dbLoad('cases', {})[_gid]?.list || []).filter(c => c.userId === _uid);
+        return message.reply({ embeds: [new EmbedBuilder().setColor(active > 0 ? 0xfee75c : 0x57f287).setTitle('📋 Your Moderation Record')
+            .addFields(
+                { name: '⚠️ Warnings',       value: warns.toString(),        inline: true },
+                { name: '🔴 Total Strikes',  value: strikes.toString(),      inline: true },
+                { name: '🔴 Active Strikes', value: active.toString(),       inline: true },
+                { name: '⏸️ Suspensions',    value: susp.toString(),         inline: true },
+                { name: '📁 Total Cases',    value: cases.length.toString(), inline: true }
+            ).setFooter({ text: 'Use !mywarnings or !mystrikes for details' })] });
+    }
+
+    if (command === 'mywarnings') {
+        const _gid = message.guild.id, _uid = message.author.id;
+        const warnings = dbLoad('staffData', {})[_gid]?.[_uid]?.warnings || [];
+        if (!warnings.length) return message.reply('✅ You have no warnings on record.');
+        const lines = warnings.slice(-10).map((w, i) => `**${i + 1}.** ${w.reason} — <t:${Math.floor(new Date(w.date).getTime() / 1000)}:D>`);
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(`⚠️ Your Warnings (${warnings.length} total)`).setDescription(lines.join('\n'))] });
+    }
+
+    if (command === 'mystrikes') {
+        const _gid = message.guild.id, _uid = message.author.id;
+        const rec = dbLoad('staffData', {})[_gid]?.[_uid];
+        const strikes = rec?.strikes || [];
+        if (!strikes.length) return message.reply('✅ You have no strikes on record.');
+        const lines = strikes.slice(-10).map((s, i) =>
+            `**${i + 1}.** ${s.reason} *(${s.active ? '🔴 active' : '⚫ expired'})* — <t:${Math.floor(new Date(s.date).getTime() / 1000)}:D>`);
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0xed4245)
+            .setTitle(`🔴 Your Strikes (${strikes.length} total, ${rec.activeStrikes || 0} active)`)
+            .setDescription(lines.join('\n'))] });
+    }
+
+    if (command === 'mycase') {
+        const _gid = message.guild.id, _uid = message.author.id;
+        const id = args[0]?.toUpperCase();
+        if (!id) return message.reply(`❌ Usage: \`${prefix}mycase <CASE-XXXX>\``);
+        const c = (dbLoad('cases', {})[_gid]?.list || []).find(c => c.id === id && c.userId === _uid);
+        if (!c) return message.reply(`❌ Case \`${id}\` not found or doesn't belong to you.`);
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x5865f2).setTitle(`📁 Case ${c.id}`)
+            .addFields(
+                { name: 'Type',   value: c.type,   inline: true },
+                { name: 'Status', value: c.status, inline: true },
+                { name: 'Date',   value: `<t:${Math.floor(new Date(c.date).getTime() / 1000)}:D>`, inline: true },
+                { name: 'Reason', value: c.reason }
+            )] });
     }
 
     // ── !staffcmds — staff commands only ─────────────────────────────────────
